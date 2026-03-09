@@ -1,8 +1,3 @@
-import BootScene from './scenes/BootScene.js';
-import GameScene from './scenes/GameScene.js';
-import HUDScene from './scenes/HUDScene.js';
-import GameOverScene from './scenes/GameOverScene.js';
-
 const STORAGE_KEY_HIGH_SCORE = 'spaceShooterHighScore';
 
 const GAME_WIDTH = 480;

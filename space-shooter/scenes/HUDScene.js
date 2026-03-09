@@ -1,4 +1,4 @@
-export default class HUDScene extends Phaser.Scene {
+class HUDScene extends Phaser.Scene {
   constructor() {
     super('HUDScene');
     this.lifeIcons = [];
