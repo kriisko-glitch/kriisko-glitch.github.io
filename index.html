@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kriisko-Studio — Games</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0d0d1a; color: #eee; font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 3rem 1rem; }
+    h1 { font-size: 2rem; margin-bottom: 0.25rem; letter-spacing: 0.05em; }
+    .sub { opacity: 0.5; font-size: 0.9rem; margin-bottom: 3rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1.5rem; width: 100%; max-width: 900px; }
+    .card { background: #1a1a2e; border: 1px solid #0f3460; border-radius: 8px; padding: 1.5rem; display: flex; flex-direction: column; gap: 0.75rem; transition: border-color 0.2s; }
+    .card:hover { border-color: #e94560; }
+    .card h2 { font-size: 1.1rem; }
+    .card p { font-size: 0.8rem; opacity: 0.6; flex: 1; }
+    .badge { font-size: 0.7rem; padding: 0.2rem 0.5rem; border-radius: 99px; background: #0f3460; display: inline-block; }
+    .badge.live { background: #1a472a; color: #4caf50; }
+    a.play { display: inline-block; margin-top: auto; padding: 0.5rem 1rem; background: #e94560; color: #fff; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 0.9rem; text-align: center; }
+    a.play:hover { background: #ff6b6b; }
+  </style>
+</head>
+<body>
+  <h1>Kriisko-Studio</h1>
+  <p class="sub">AI-First Game Studio — kriisko-glitch</p>
+  <div class="grid">
+    <div class="card">
+      <h2>Snake v3</h2>
+      <p>Classic snake with wrap-around grid, speed scaling, and a no-reverse grace period.</p>
+      <span class="badge live">LIVE</span>
+      <a class="play" href="snake/index.html">Play</a>
+    </div>
+    <div class="card">
+      <h2>Breakout</h2>
+      <p>Ball-and-paddle brick breaker with multi-level progression and power-ups.</p>
+      <span class="badge live">LIVE</span>
+      <a class="play" href="breakout/index.html">Play</a>
+    </div>
+    <div class="card">
+      <h2>Space Shooter</h2>
+      <p>Classic top-down shooter built with Phaser 3. Waves, bosses, and audio.</p>
+      <span class="badge">QUEUED</span>
+      <a class="play" style="background:#333; pointer-events:none;" href="#">Coming soon</a>
+    </div>
+  </div>
+</body>
+</html>

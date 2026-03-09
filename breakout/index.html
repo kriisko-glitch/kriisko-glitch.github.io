@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Breakout</title>
+  <style>
+    :root {
+      --bg: #0d0d1a;
+      --text: #eeeeee;
+      --paddle: #e94560;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      padding: 16px;
+    }
+
+    .game-wrap {
+      width: min(100%, 560px);
+      display: grid;
+      gap: 12px;
+      justify-items: center;
+    }
+
+    .hud {
+      width: min(100%, 480px);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 1rem;
+      letter-spacing: 0.02em;
+      user-select: none;
+    }
+
+    .canvas-frame {
+      width: min(100%, 480px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
+      background: var(--bg);
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 4 / 5;
+      touch-action: none;
+      background: var(--bg);
+    }
+  </style>
+</head>
+<body>
+  <main class="game-wrap">
+    <section class="hud" aria-live="polite">
+      <div id="score-display">Score: 0</div>
+      <div id="level-display">Level: 1</div>
+    </section>
+    <div class="canvas-frame">
+      <canvas id="game-canvas" width="480" height="600"></canvas>
+    </div>
+  </main>
+  <script type="module" src="game.js"></script>
+</body>
+</html>
