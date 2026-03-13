@@ -214,8 +214,10 @@ const phaserConfig = {
     width: CONFIG.GAME.WIDTH,
     height: CONFIG.GAME.HEIGHT
   },
+  render: {
+    preserveDrawingBuffer: true,
+  },
   scene: [BootScene, GameScene, HUDScene, GameOverScene]
 };
 
-// eslint-disable-next-line no-new
-new Phaser.Game(phaserConfig);
+window.Platformer.game = new Phaser.Game(phaserConfig);

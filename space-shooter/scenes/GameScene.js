@@ -206,9 +206,7 @@ class GameScene extends Phaser.Scene {
       g.destroy();
     }
 
-    this.explosionParticles = this.add.particles('ss-particle');
-    this.explosionParticles.setDepth(15);
-    this.explosionEmitter = this.explosionParticles.createEmitter({
+    this.explosionEmitter = this.add.particles(0, 0, 'ss-particle', {
       on: false,
       lifespan: 400,
       speed: 150,
@@ -217,6 +215,7 @@ class GameScene extends Phaser.Scene {
       scale: { start: 1, end: 0 },
       blendMode: 'ADD',
     });
+    this.explosionEmitter.setDepth(15);
   }
 
   createStarfield() {

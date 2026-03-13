@@ -624,6 +624,16 @@ function init() {
 }
 
 init();
+
+  // Debug API — exposed for automated testing (GameTestKit)
+  window.__BREAKOUT__ = {
+    getScore:      () => game.score,
+    getState:      () => game.state,
+    getBricksLeft: () => game.bricksLeft,
+    getBallCount:  () => game.balls.length,
+    getPaddleX:    () => game.paddle.x,
+    getLevel:      () => game.level,
+  };
 })();
   </script>
 </body>

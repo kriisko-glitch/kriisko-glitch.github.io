@@ -211,6 +211,21 @@
 
       startBtn.addEventListener('click', start);
       restartBtn.addEventListener('click', start);
+
+      // Draw initial state so canvas is not blank before "Start" is clicked
+      snake = [{ x: 2, y: ROWS >> 1 }, { x: 1, y: ROWS >> 1 }, { x: 0, y: ROWS >> 1 }];
+      placeFood();
+      draw();
+
+      // Debug API — exposed for automated testing (GameTestKit)
+      window.__SNAKE__ = {
+        getScore:       () => score,
+        getState:       () => !started ? 'idle' : loopId ? 'playing' : 'gameover',
+        getSnakeLength: () => snake.length,
+        getHead:        () => snake[0] ? { ...snake[0] } : null,
+        getDir:         () => ({ ...dir }),
+        getSpeed:       () => speed,
+      };
     })();
   </script>
 </body>
