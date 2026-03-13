@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Whiskers & Wands</title>
+  <style>
+    :root {
+      --bg0: #0d1021;
+      --bg1: #1a1f3c;
+      --panel: rgba(8, 10, 22, 0.85);
+      --text: #e8ecff;
+      --accent: #00bcd4;
+      --warn: #ff5252;
+      --ok: #42d392;
+      --gold: #ffc107;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at 25% 20%, #242a52 0%, var(--bg0) 50%, #070910 100%);
+      color: var(--text);
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    }
+
+    #game-shell {
+      position: relative;
+      width: 800px;
+      height: 600px;
+      border: 2px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+      background: #05060b;
+    }
+
+    #game-root {
+      width: 800px;
+      height: 600px;
+    }
+
+    #pet-name-overlay {
+      position: absolute;
+      left: 50%;
+      top: 58%;
+      transform: translate(-50%, -50%);
+      width: 320px;
+      padding: 12px 14px;
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 10px;
+      display: none;
+      pointer-events: auto;
+      z-index: 30;
+      backdrop-filter: blur(3px);
+    }
+
+    #pet-name-overlay label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+      letter-spacing: 0.5px;
+      color: #d6dbff;
+    }
+
+    #pet-name-input {
+      width: 100%;
+      height: 36px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      padding: 0 10px;
+      font-size: 16px;
+      outline: none;
+    }
+
+    #pet-name-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(0, 188, 212, 0.25);
+    }
+
+    #title-ai-status {
+      margin-top: 9px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #d6dbff;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--warn);
+      box-shadow: 0 0 8px rgba(255, 82, 82, 0.7);
+      flex-shrink: 0;
+    }
+
+    .status-dot.online {
+      background: var(--ok);
+      box-shadow: 0 0 8px rgba(66, 211, 146, 0.7);
+    }
+
+    #chat-input-overlay {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      width: 180px;
+      z-index: 25;
+      display: none;
+      pointer-events: auto;
+    }
+
+    #chat-input {
+      width: 100%;
+      height: 34px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      background: rgba(16, 20, 39, 0.92);
+      color: #fff;
+      font-size: 13px;
+      padding: 0 9px;
+      outline: none;
+    }
+
+    #chat-input:focus {
+      border-color: var(--gold);
+      box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.23);
+    }
+
+    @media (max-width: 820px) {
+      #game-shell {
+        width: 100vw;
+        height: 75vh;
+      }
+      #game-root,
+      #game-shell canvas {
+        width: 100% !important;
+        height: 100% !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="game-shell">
+    <div id="game-root"></div>
+
+    <div id="pet-name-overlay" aria-label="Companion Name">
+      <label for="pet-name-input">Name your companion:</label>
+      <input id="pet-name-input" type="text" maxlength="16" value="Pip" autocomplete="off" spellcheck="false" />
+      <div id="title-ai-status">
+        <span id="title-ai-dot" class="status-dot"></span>
+        <span id="title-ai-label">AI Offline</span>
+      </div>
+    </div>
+
+    <div id="chat-input-overlay" aria-label="Chat Input">
+      <input id="chat-input" type="text" maxlength="140" placeholder="Type to your companion..." autocomplete="off" spellcheck="false" />
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.87.0/dist/phaser.min.js"></script>
+  <script src="scenes/BootScene.js"></script>
+  <script src="scenes/TitleScene.js"></script>
+  <script src="scenes/GameScene.js"></script>
+  <script src="scenes/HUDScene.js"></script>
+  <script src="scenes/GameOverScene.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
