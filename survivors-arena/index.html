@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Survivors Arena</title>
+  <style>
+    :root {
+      --bg: #05050b;
+      --accent: #e94560;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at top, #101326 0%, var(--bg) 65%);
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      color: #ffffff;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    #game-root {
+      width: 800px;
+      height: 600px;
+      border: 1px solid rgba(233, 69, 96, 0.4);
+      box-shadow: 0 24px 90px rgba(0, 0, 0, 0.5);
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-root"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.87.0/dist/phaser.min.js"></script>
+  <script src="scenes/BootScene.js"></script>
+  <script src="scenes/GameScene.js"></script>
+  <script src="scenes/HUDScene.js"></script>
+  <script src="scenes/GameOverScene.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
