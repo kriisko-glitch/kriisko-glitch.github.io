@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
   <title>Space Shooter</title>
   <style>
     :root {
@@ -43,7 +43,7 @@
     }
   </style>
 </head>
-<body>
+<body data-mobile-controls="dpad">
   <div id="game-root"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.87.0/phaser.min.js"></script>
   <script>
@@ -1664,5 +1664,6 @@ window.SpaceShooter.game = new Phaser.Game(phaserConfig);
 
 
   </script>
+  <script src="../shared/mobile-controls.js"></script>
 </body>
 </html>

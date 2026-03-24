@@ -439,6 +439,12 @@ var OllamaService = {
         fps: CONFIG.GAME.PHYSICS_FPS
       }
     },
+    scale: {
+      mode: Phaser.Scale.FIT,
+      autoCenter: Phaser.Scale.CENTER_BOTH,
+      width: CONFIG.GAME.WIDTH,
+      height: CONFIG.GAME.HEIGHT,
+    },
     scene: [BootScene, TitleScene, GameScene, HUDScene, GameOverScene]
   };
 

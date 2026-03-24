@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <title>Whiskers & Wands</title>
   <style>
     :root {
@@ -149,7 +149,7 @@
     }
   </style>
 </head>
-<body>
+<body data-mobile-controls="click">
   <div id="game-shell">
     <div id="game-root"></div>
 
@@ -174,5 +174,6 @@
   <script src="scenes/HUDScene.js"></script>
   <script src="scenes/GameOverScene.js"></script>
   <script src="game.js"></script>
+  <script src="../shared/mobile-controls.js"></script>
 </body>
 </html>

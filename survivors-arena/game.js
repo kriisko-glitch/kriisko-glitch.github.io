@@ -196,6 +196,12 @@
         debug: false
       }
     },
+    scale: {
+      mode: Phaser.Scale.FIT,
+      autoCenter: Phaser.Scale.CENTER_BOTH,
+      width: CONFIG.GAME.WIDTH,
+      height: CONFIG.GAME.HEIGHT,
+    },
     scene: [window.BootScene, window.GameScene, window.HUDScene, window.GameOverScene],
     pixelArt: false,
     roundPixels: false

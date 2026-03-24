@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Snake · v3</title>
   <style>
     * { box-sizing: border-box; }
@@ -67,7 +67,7 @@
     }
   </style>
 </head>
-<body>
+<body data-mobile-controls="swipe">
   <h1>Snake <span style="font-size:0.6em; opacity:0.7">v3</span></h1>
   <div class="score-row">
     <span class="score">Score: <strong id="score">0</strong></span>
@@ -222,11 +222,15 @@
         getScore:       () => score,
         getState:       () => !started ? 'idle' : loopId ? 'playing' : 'gameover',
         getSnakeLength: () => snake.length,
-        getHead:        () => snake[0] ? { ...snake[0] } : null,
+        getHead:        () => snake.length ? { ...snake[snake.length - 1] } : null,
         getDir:         () => ({ ...dir }),
         getSpeed:       () => speed,
+        getFood:        () => ({ ...food }),
+        getGrid:        () => ({ cols: COLS, rows: ROWS }),
+        getSnake:       () => snake.map(s => ({ ...s })),
       };
     })();
   </script>
+  <script src="../shared/mobile-controls.js"></script>
 </body>
 </html>

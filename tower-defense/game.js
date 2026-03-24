@@ -187,6 +187,12 @@ const phaserConfig = {
   height: CONFIG.CANVAS_HEIGHT,
   parent: "game-root",
   backgroundColor: CONFIG.COLORS.BACKGROUND,
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+    width: CONFIG.CANVAS_WIDTH,
+    height: CONFIG.CANVAS_HEIGHT,
+  },
   scene: [BootScene, GameScene, HUDScene, GameOverScene]
 };
 

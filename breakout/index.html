@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
   <title>Breakout</title>
   <style>
     :root {
@@ -65,7 +65,7 @@
     }
   </style>
 </head>
-<body>
+<body data-mobile-controls="drag">
   <main class="game-wrap">
     <section class="hud" aria-live="polite">
       <div id="score-display">Score: 0</div>
@@ -636,5 +636,6 @@ init();
   };
 })();
   </script>
+  <script src="../shared/mobile-controls.js"></script>
 </body>
 </html>

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <title>Survivors Arena</title>
   <style>
     :root {
@@ -43,7 +43,7 @@
     }
   </style>
 </head>
-<body>
+<body data-mobile-controls="joystick">
   <div id="game-root"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.87.0/dist/phaser.min.js"></script>
@@ -52,5 +52,6 @@
   <script src="scenes/HUDScene.js"></script>
   <script src="scenes/GameOverScene.js"></script>
   <script src="game.js"></script>
+  <script src="../shared/mobile-controls.js"></script>
 </body>
 </html>
