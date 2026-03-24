@@ -78,6 +78,8 @@
   </main>
   <script>
 (function() {
+var leaderboardActive = false;
+
 // CONSTANTS
 const CANVAS_WIDTH = 480;
 const CANVAS_HEIGHT = 600;
@@ -196,6 +198,7 @@ window.addEventListener("keydown", (event) => {
     if (game.state === GAME_STATES.IDLE) {
       startPlayFromIdle();
     } else if (game.state === GAME_STATES.DEAD) {
+      if (leaderboardActive) return;
       restartGame();
     } else if (game.state === GAME_STATES.PLAYING) {
       const now = performance.now();
@@ -227,7 +230,10 @@ canvas.addEventListener("mousemove", (event) => updatePointer(event.clientX));
 canvas.addEventListener("mousedown", (event) => {
   updatePointer(event.clientX);
   if (game.state === GAME_STATES.IDLE) startPlayFromIdle();
-  if (game.state === GAME_STATES.DEAD) restartGame();
+  if (game.state === GAME_STATES.DEAD) {
+    if (leaderboardActive) return;
+    restartGame();
+  }
 });
 
 canvas.addEventListener("touchstart", (event) => {
@@ -235,7 +241,10 @@ canvas.addEventListener("touchstart", (event) => {
   if (!touch) return;
   updatePointer(touch.clientX);
   if (game.state === GAME_STATES.IDLE) startPlayFromIdle();
-  if (game.state === GAME_STATES.DEAD) restartGame();
+  if (game.state === GAME_STATES.DEAD) {
+    if (leaderboardActive) return;
+    restartGame();
+  }
 }, { passive: true });
 
 canvas.addEventListener("touchmove", (event) => {
@@ -554,12 +563,19 @@ function updateBalls(dt) {
     return;
   }
 
-  if (game.balls.length === 0) {
+  if (game.balls.length === 0 && game.state !== GAME_STATES.DEAD && !leaderboardActive) {
     game.state = GAME_STATES.DEAD;
     if (window.KriiskoLeaderboard && window.KriiskoLeaderboard.qualifies('breakout', game.score)) {
+      leaderboardActive = true;
       window.KriiskoLeaderboard.promptInitials('breakout', game.score, function(initials) {
         if (initials) window.KriiskoLeaderboard.submit('breakout', game.score, initials);
         window.KriiskoLeaderboard.show('breakout');
+        var pollId = setInterval(function() {
+          if (!document.getElementById('klb-show-overlay')) {
+            leaderboardActive = false;
+            clearInterval(pollId);
+          }
+        }, 200);
       });
     }
   }

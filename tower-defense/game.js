@@ -135,6 +135,22 @@ const CONFIG = {
       slowFactor: 0.5,
       slowDurationMs: 2000,
       shootFrequency: 460
+    },
+    wall: {
+      label: "\uD83E\uDDF1 Wall",
+      cost: 25,
+      damage: 0,
+      fireRate: 0,
+      range: 0,
+      projectileSpeed: 0,
+      color: 0x888888,
+      projectileColor: 0x888888,
+      splashRadius: 0,
+      slowFactor: 1,
+      slowDurationMs: 0,
+      shootFrequency: 0,
+      isWall: true,
+      wallHp: 5
     }
   },
   PROJECTILES: {

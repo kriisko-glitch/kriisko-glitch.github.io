@@ -442,8 +442,15 @@ export default class GameScene extends Phaser.Scene {
     container.hpBarFill = hpBarFill;
     container.hpBarWidth = hpBarWidth;
     container.isDead = false;
-    container.shootCooldown = 2000 + Phaser.Math.Between(-500, 500);
-    container.nextShootAt = this.time.now + container.shootCooldown;
+    var shooterFraction = Math.min(0.5, (this.wave - 1) * 0.15);
+    var isShooter = (this.wave >= 2) && (Math.random() < shooterFraction);
+    container.isShooter = isShooter;
+    container.shootCooldown = isShooter ? (4000 + Math.random() * 2000) : Infinity;
+    container.nextShootAt = isShooter ? (this.time.now + container.shootCooldown) : Infinity;
+
+    if (isShooter) {
+      body.setTint(0xff6600);
+    }
 
     this.enemies.add(container);
   }
@@ -525,12 +532,21 @@ export default class GameScene extends Phaser.Scene {
 
   updateTowerHpIndicator(tower) {
     if (!tower.hpIndicator) return;
-    const hearts = '♥'.repeat(Math.max(0, tower.hp));
-    tower.hpIndicator.setText(hearts);
-    if (tower.hp === 1) {
-      tower.hpIndicator.setColor('#ff0000');
-    } else if (tower.hp === 2) {
-      tower.hpIndicator.setColor('#ff8800');
+    if (tower.isWall) {
+      tower.hpIndicator.setText(tower.hp + '/' + tower.maxHp);
+      tower.hpIndicator.setColor(tower.hp <= 2 ? '#ff0000' : '#ff4444');
+      if (tower.sprite && tower.sprite.active) {
+        tower.sprite.setFillStyle(0x888888, 1);
+        tower.sprite.setStrokeStyle(2, tower.hp <= 2 ? 0xff0000 : 0x555555, 1);
+      }
+    } else {
+      const hearts = '\u2665'.repeat(Math.max(0, tower.hp));
+      tower.hpIndicator.setText(hearts);
+      if (tower.hp === 1) {
+        tower.hpIndicator.setColor('#ff0000');
+      } else if (tower.hp === 2) {
+        tower.hpIndicator.setColor('#ff8800');
+      }
     }
   }
 
@@ -672,7 +688,7 @@ export default class GameScene extends Phaser.Scene {
 
     for (let index = 0; index < enemies.length; index += 1) {
       const enemy = enemies[index];
-      if (!enemy.active || enemy.isDead) {
+      if (!enemy.active || enemy.isDead || !enemy.isShooter) {
         continue;
       }
 
@@ -689,7 +705,7 @@ export default class GameScene extends Phaser.Scene {
       const projectile = this.add.circle(enemy.x, enemy.y, 4, 0xff0000, 1);
       projectile.setDepth(this.cfg.DEPTH.PROJECTILE);
       projectile.targetTower = tower;
-      projectile.speed = 150;
+      projectile.speed = 120;
       projectile.startX = enemy.x;
       projectile.startY = enemy.y;
 
@@ -738,13 +754,31 @@ export default class GameScene extends Phaser.Scene {
       projectile.x += Math.cos(angle) * moveStep;
       projectile.y += Math.sin(angle) * moveStep;
 
+      let hitWall = false;
+      for (let wi = this.towers.length - 1; wi >= 0; wi--) {
+        const wall = this.towers[wi];
+        if (!wall.isWall || !wall.sprite.active) continue;
+        const dw = Phaser.Math.Distance.Between(projectile.x, projectile.y, wall.x, wall.y);
+        if (dw <= this.cfg.GRID_SIZE * 0.5) {
+          wall.hp -= 1;
+          this.updateTowerHpIndicator(wall);
+          if (wall.hp <= 0) {
+            this.destroyTower(wall, wi);
+          }
+          projectile.destroy();
+          hitWall = true;
+          break;
+        }
+      }
+      if (hitWall) continue;
+
       const traveled = Phaser.Math.Distance.Between(
         projectile.x,
         projectile.y,
         projectile.startX,
         projectile.startY
       );
-      if (traveled > 400) {
+      if (traveled > 300) {
         projectile.destroy();
       }
     }
@@ -885,6 +919,9 @@ export default class GameScene extends Phaser.Scene {
     sprite.setDepth(this.cfg.DEPTH.TOWER);
     sprite.setStrokeStyle(1, 0x0f0f0f, 0.9);
 
+    const isWall = !!towerDef.isWall;
+    const towerHp = isWall ? towerDef.wallHp : 3;
+
     const tower = {
       type: towerType,
       col,
@@ -904,17 +941,28 @@ export default class GameScene extends Phaser.Scene {
       baseCost: towerDef.cost,
       upgraded: false,
       nextShotAt: this.time.now,
-      hp: 3,
-      maxHp: 3,
-      hpIndicator: null
+      hp: towerHp,
+      maxHp: towerHp,
+      hpIndicator: null,
+      isWall
     };
 
-    tower.hpIndicator = this.add.text(
-      worldPosition.x,
-      worldPosition.y - this.cfg.TOWERS.BASE_SIZE * 0.5 - 6,
-      '♥♥♥',
-      { fontFamily: 'sans-serif', fontSize: '10px', color: '#ff4444' }
-    ).setOrigin(0.5).setDepth(this.cfg.DEPTH.TOWER + 1);
+    if (isWall) {
+      sprite.setStrokeStyle(2, 0x555555, 1);
+      tower.hpIndicator = this.add.text(
+        worldPosition.x,
+        worldPosition.y + this.cfg.TOWERS.BASE_SIZE * 0.5 + 4,
+        towerHp + '/' + towerHp,
+        { fontFamily: 'sans-serif', fontSize: '9px', color: '#ff4444' }
+      ).setOrigin(0.5).setDepth(this.cfg.DEPTH.TOWER + 1);
+    } else {
+      tower.hpIndicator = this.add.text(
+        worldPosition.x,
+        worldPosition.y - this.cfg.TOWERS.BASE_SIZE * 0.5 - 6,
+        '♥♥♥',
+        { fontFamily: 'sans-serif', fontSize: '10px', color: '#ff4444' }
+      ).setOrigin(0.5).setDepth(this.cfg.DEPTH.TOWER + 1);
+    }
 
     this.towers.push(tower);
     this.occupiedCellSet.add(this.cellKey(col, row));
@@ -926,7 +974,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   upgradeTower(tower) {
-    if (!this.isRunning || tower.upgraded || this.gold < tower.baseCost) {
+    if (!this.isRunning || tower.upgraded || tower.isWall || this.gold < tower.baseCost) {
       return;
     }
 

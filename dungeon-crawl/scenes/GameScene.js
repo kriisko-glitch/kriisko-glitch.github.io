@@ -281,6 +281,12 @@
         stopY: function() { scene.moveDir.y = 0; },
         attack: function() { scene.tryPlayerAttack(); }
       };
+
+      if ('ontouchstart' in window) {
+        this.add.text(this.scale.width - 10, this.scale.height - 10, '\u26A1 = ATTACK', {
+          fontSize: '12px', color: '#ffff00'
+        }).setOrigin(1, 1).setScrollFactor(0).setDepth(500).setAlpha(0.7);
+      }
     }
 
     onShutdown() {

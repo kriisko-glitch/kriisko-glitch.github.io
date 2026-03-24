@@ -426,14 +426,14 @@
     this.midLayer.setPosition(cx, cy);
     this.starLayer.setPosition(cx, cy);
 
-    this.floorLayer.tilePositionX = cam.scrollX;
-    this.floorLayer.tilePositionY = cam.scrollY;
+    this.floorLayer.tilePositionX = cam.scrollX * 0.5;
+    this.floorLayer.tilePositionY = cam.scrollY * 0.5;
 
-    this.midLayer.tilePositionX = cam.scrollX * 0.3;
-    this.midLayer.tilePositionY = cam.scrollY * 0.3;
+    this.midLayer.tilePositionX = cam.scrollX * 0.2;
+    this.midLayer.tilePositionY = cam.scrollY * 0.2;
 
-    this.starLayer.tilePositionX = cam.scrollX * 0.1;
-    this.starLayer.tilePositionY = cam.scrollY * 0.1;
+    this.starLayer.tilePositionX = cam.scrollX * 0.05;
+    this.starLayer.tilePositionY = cam.scrollY * 0.05;
   };
 
   GameScene.prototype.updatePlayerMovement = function (delta) {
@@ -948,29 +948,32 @@
 
   GameScene.prototype.updateGems = function (delta) {
     this.gemSparkleAccumulator += delta;
+    var scene = this;
 
     this.xpGems.children.each(function (gem) {
       if (!gem.active) {
         return;
       }
 
-      var dist = Phaser.Math.Distance.Between(gem.x, gem.y, this.player.x, this.player.y);
-      if (dist <= this.magnetRadius) {
+      var dist = Phaser.Math.Distance.Between(gem.x, gem.y, scene.player.x, scene.player.y);
+      if (dist <= scene.magnetRadius) {
         gem.setData("magnetized", true);
       }
 
-      if (gem.getData("magnetized")) {
-        var normalized = 1 - Phaser.Math.Clamp(dist / this.magnetRadius, 0, 1);
+      if (dist < 80 && !gem.getData("magnetized")) {
+        scene.physics.moveToObject(gem, scene.player, 150);
+      } else if (gem.getData("magnetized")) {
+        var normalized = 1 - Phaser.Math.Clamp(dist / scene.magnetRadius, 0, 1);
         var curve = Phaser.Math.Easing.Cubic.In(normalized);
-        var speed = Phaser.Math.Linear(this.cfg.XP.GEM_SPEED_MIN, this.cfg.XP.GEM_SPEED_MAX, curve);
-        this.physics.moveToObject(gem, this.player, speed);
+        var speed = Phaser.Math.Linear(scene.cfg.XP.GEM_SPEED_MIN, scene.cfg.XP.GEM_SPEED_MAX, curve);
+        scene.physics.moveToObject(gem, scene.player, speed);
       } else {
         gem.setVelocity(0, 0);
       }
 
-      if (this.gemSparkleAccumulator >= this.cfg.XP.GEM_SPARKLE_INTERVAL_MS) {
+      if (scene.gemSparkleAccumulator >= scene.cfg.XP.GEM_SPARKLE_INTERVAL_MS) {
         if (Math.random() < 0.33) {
-          this.gemSparkleEmitter.emitParticleAt(gem.x, gem.y, 1);
+          scene.gemSparkleEmitter.emitParticleAt(gem.x, gem.y, 1);
         }
       }
     }, this);
@@ -1145,6 +1148,7 @@
     gem.setData("xp", xpValue);
     gem.setData("magnetized", false);
     gem.setScale(1);
+    gem.body.setCircle(12);
 
     this.tweens.killTweensOf(gem);
     this.tweens.add({
