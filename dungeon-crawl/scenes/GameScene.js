@@ -835,7 +835,7 @@
         .image(this.cfg.GAME.WIDTH * 0.5, this.cfg.GAME.HEIGHT * 0.5, "vignette")
         .setScrollFactor(0)
         .setDepth(this.cfg.DEPTH.SCREEN_FX)
-        .setAlpha(0.65)
+        .setAlpha(0.4)
         .setBlendMode(Phaser.BlendModes.MULTIPLY)
         .setDisplaySize(this.cfg.GAME.WIDTH, this.cfg.GAME.HEIGHT);
     }

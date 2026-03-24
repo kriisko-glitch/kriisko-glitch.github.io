@@ -1160,16 +1160,22 @@
     }
 
     this.isGameOver = true;
-    this.physics.world.pause();
 
-    this.deathEmitter.setParticleTint(0xe94560);
-    this.deathEmitter.explode(18, this.player.x, this.player.y);
+    try { this.physics.world.pause(); } catch (_) {}
+
+    try {
+      this.deathEmitter.setParticleTint(0xe94560);
+      this.deathEmitter.explode(18, this.player.x, this.player.y);
+    } catch (_) {}
+
     this.cameras.main.flash(130, 255, 40, 40, false);
-
     this.playGameOverSound();
 
-    this.cameras.main.zoomTo(0.75, this.cfg.VFX.DEATH_ZOOM_DURATION_MS);
-    this.cameras.main.fade(this.cfg.VFX.DEATH_TRANSITION_MS, 120, 0, 0, false);
+    var deathZoomMs = (this.cfg.VFX && this.cfg.VFX.DEATH_ZOOM_DURATION_MS) || 800;
+    var deathTransitionMs = (this.cfg.VFX && this.cfg.VFX.DEATH_TRANSITION_MS) || 1200;
+
+    this.cameras.main.zoomTo(0.75, deathZoomMs);
+    this.cameras.main.fade(deathTransitionMs, 120, 0, 0, false);
 
     var stats = {
       score: this.score,
@@ -1178,11 +1184,12 @@
       elapsedMs: this.elapsedMs
     };
 
-    this.bus.emit(this.cfg.EVENTS.GAME_OVER, stats);
+    try { this.bus.emit(this.cfg.EVENTS.GAME_OVER, stats); } catch (_) {}
 
-    this.time.delayedCall(this.cfg.VFX.DEATH_TRANSITION_MS + 20, function () {
-      this.scene.stop("HUDScene");
-      this.scene.start("GameOverScene", stats);
+    var scene = this;
+    this.time.delayedCall(deathTransitionMs + 20, function () {
+      try { scene.scene.stop("HUDScene"); } catch (_) {}
+      scene.scene.start("GameOverScene", stats);
     }, null, this);
   };
 

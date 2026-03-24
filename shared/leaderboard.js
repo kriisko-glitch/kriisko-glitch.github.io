@@ -68,7 +68,7 @@
   // ── Initials Entry UI ─────────────────────────────────────────────
 
   function promptInitials(gameName, score, onComplete) {
-    var slots = [0, 0, 0]; // indices into CHARS
+    var slots = [0, 0, 0];
     var cursor = 0;
     var confirmed = false;
 
@@ -80,40 +80,62 @@
 
     var box = document.createElement('div');
     box.style.cssText =
-      'text-align:center;padding:40px;max-width:420px;width:90%;';
+      'text-align:center;padding:32px 20px;max-width:420px;width:95%;';
 
     var title = document.createElement('div');
     title.textContent = 'NEW HIGH SCORE!';
     title.style.cssText =
-      'font-size:28px;color:#ff0;font-weight:bold;margin-bottom:16px;' +
+      'font-size:24px;color:#ff0;font-weight:bold;margin-bottom:12px;' +
       'animation:klb-blink 0.8s step-end infinite;text-shadow:0 0 10px #ff0,0 0 20px #ff0;';
 
     var scoreEl = document.createElement('div');
     scoreEl.textContent = String(score);
-    scoreEl.style.cssText = 'font-size:36px;color:#fff;margin-bottom:24px;text-shadow:0 0 8px #0ff;';
+    scoreEl.style.cssText = 'font-size:32px;color:#fff;margin-bottom:20px;text-shadow:0 0 8px #0ff;';
 
     var slotsRow = document.createElement('div');
-    slotsRow.style.cssText = 'display:flex;justify-content:center;gap:12px;margin-bottom:20px;';
+    slotsRow.style.cssText = 'display:flex;justify-content:center;gap:16px;margin-bottom:20px;';
 
     var slotEls = [];
+    var hiddenInputs = [];
     for (var i = 0; i < 3; i++) {
       var wrapper = document.createElement('div');
-      wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:6px;';
+      wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px;';
 
       var upBtn = document.createElement('button');
       upBtn.textContent = '\u25B2';
-      upBtn.style.cssText = btnArrowStyle();
+      upBtn.style.cssText =
+        'display:flex;align-items:center;justify-content:center;width:56px;height:50px;' +
+        'background:rgba(0,255,255,0.1);border:2px solid #0ff;color:#0ff;font-size:24px;' +
+        'cursor:pointer;border-radius:6px;text-shadow:0 0 6px #0ff;-webkit-tap-highlight-color:transparent;' +
+        'touch-action:manipulation;user-select:none;';
       upBtn.dataset.slot = String(i);
       upBtn.dataset.dir = 'up';
 
       var cell = document.createElement('div');
       cell.style.cssText =
-        'width:56px;height:64px;border:3px solid #0ff;display:flex;align-items:center;justify-content:center;' +
-        'font-size:36px;color:#0ff;background:rgba(0,255,255,0.05);text-shadow:0 0 8px #0ff;';
+        'position:relative;width:56px;height:64px;border:3px solid #0ff;display:flex;align-items:center;justify-content:center;' +
+        'font-size:36px;color:#0ff;background:rgba(0,255,255,0.05);text-shadow:0 0 8px #0ff;cursor:pointer;' +
+        'border-radius:4px;-webkit-tap-highlight-color:transparent;';
+
+      var hiddenInput = document.createElement('input');
+      hiddenInput.type = 'text';
+      hiddenInput.maxLength = 1;
+      hiddenInput.autocomplete = 'off';
+      hiddenInput.autocapitalize = 'characters';
+      hiddenInput.style.cssText =
+        'position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;font-size:16px;' +
+        'border:none;background:transparent;text-align:center;';
+      hiddenInput.dataset.slot = String(i);
+      cell.appendChild(hiddenInput);
+      hiddenInputs.push(hiddenInput);
 
       var downBtn = document.createElement('button');
       downBtn.textContent = '\u25BC';
-      downBtn.style.cssText = btnArrowStyle();
+      downBtn.style.cssText =
+        'display:flex;align-items:center;justify-content:center;width:56px;height:50px;' +
+        'background:rgba(0,255,255,0.1);border:2px solid #0ff;color:#0ff;font-size:24px;' +
+        'cursor:pointer;border-radius:6px;text-shadow:0 0 6px #0ff;-webkit-tap-highlight-color:transparent;' +
+        'touch-action:manipulation;user-select:none;';
       downBtn.dataset.slot = String(i);
       downBtn.dataset.dir = 'down';
 
@@ -122,42 +144,31 @@
       wrapper.appendChild(downBtn);
       slotsRow.appendChild(wrapper);
 
-      slotEls.push({ cell: cell, up: upBtn, down: downBtn, wrapper: wrapper });
+      slotEls.push({ cell: cell, up: upBtn, down: downBtn, wrapper: wrapper, input: hiddenInput });
     }
 
-    var mobileNav = document.createElement('div');
-    mobileNav.style.cssText = 'display:flex;justify-content:center;gap:16px;margin-bottom:16px;';
-
-    var leftBtn = document.createElement('button');
-    leftBtn.textContent = '\u25C0 LEFT';
-    leftBtn.style.cssText = btnStyle('#0ff', '#000');
-
-    var rightBtn = document.createElement('button');
-    rightBtn.textContent = 'RIGHT \u25B6';
-    rightBtn.style.cssText = btnStyle('#0ff', '#000');
-
-    mobileNav.appendChild(leftBtn);
-    mobileNav.appendChild(rightBtn);
-
     var confirmBtn = document.createElement('button');
-    confirmBtn.textContent = 'CONFIRM';
+    confirmBtn.textContent = '\u2713 CONFIRM';
     confirmBtn.style.cssText =
-      btnStyle('#ff0', '#000') + 'font-size:20px;padding:12px 36px;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto;';
+      'display:block;width:100%;height:60px;margin:16px 0 12px;font-family:"Courier New",monospace;' +
+      'font-size:22px;font-weight:bold;border:2px solid #ff0;background:#ff0;color:#000;cursor:pointer;' +
+      'border-radius:6px;text-shadow:none;box-shadow:0 0 12px #ff0;-webkit-tap-highlight-color:transparent;' +
+      'touch-action:manipulation;';
 
     var skipBtn = document.createElement('button');
     skipBtn.textContent = 'SKIP';
     skipBtn.style.cssText =
       'background:none;border:none;color:#666;font-family:"Courier New",monospace;font-size:14px;' +
-      'cursor:pointer;text-decoration:underline;display:block;margin:0 auto;';
+      'cursor:pointer;text-decoration:underline;display:block;margin:0 auto;padding:8px 16px;' +
+      '-webkit-tap-highlight-color:transparent;touch-action:manipulation;';
 
     var hint = document.createElement('div');
     hint.textContent = '\u2191\u2193 cycle  \u2190\u2192 move  ENTER confirm';
-    hint.style.cssText = 'color:#555;font-size:12px;margin-top:12px;';
+    hint.style.cssText = 'color:#555;font-size:11px;margin-top:10px;';
 
     box.appendChild(title);
     box.appendChild(scoreEl);
     box.appendChild(slotsRow);
-    box.appendChild(mobileNav);
     box.appendChild(confirmBtn);
     box.appendChild(skipBtn);
     box.appendChild(hint);
@@ -170,16 +181,32 @@
 
     function renderSlots() {
       for (var s = 0; s < 3; s++) {
-        slotEls[s].cell.textContent = CHARS[slots[s]];
+        slotEls[s].cell.childNodes[0].nodeValue = null;
+        var letterNode = slotEls[s].cell.firstChild;
+        while (letterNode && letterNode.nodeType !== 3) letterNode = letterNode.nextSibling;
+        if (!letterNode) {
+          letterNode = document.createTextNode('');
+          slotEls[s].cell.insertBefore(letterNode, slotEls[s].cell.firstChild);
+        }
+        letterNode.nodeValue = CHARS[slots[s]];
         slotEls[s].cell.style.borderColor = s === cursor ? '#ff0' : '#0ff';
         slotEls[s].cell.style.color = s === cursor ? '#ff0' : '#0ff';
         slotEls[s].cell.style.textShadow = s === cursor ? '0 0 12px #ff0' : '0 0 8px #0ff';
+        slotEls[s].up.style.borderColor = s === cursor ? '#ff0' : '#0ff';
+        slotEls[s].up.style.color = s === cursor ? '#ff0' : '#0ff';
+        slotEls[s].down.style.borderColor = s === cursor ? '#ff0' : '#0ff';
+        slotEls[s].down.style.color = s === cursor ? '#ff0' : '#0ff';
       }
     }
 
     function cycleSlot(slot, dir) {
       slots[slot] = (slots[slot] + dir + CHARS.length) % CHARS.length;
       renderSlots();
+    }
+
+    function charToSlotIndex(ch) {
+      var idx = CHARS.indexOf(ch.toUpperCase());
+      return idx >= 0 ? idx : 0;
     }
 
     function finish(skipped) {
@@ -204,31 +231,53 @@
       else if (key === 'ArrowRight' || key === 'd' || key === 'D') { cursor = Math.min(2, cursor + 1); renderSlots(); e.preventDefault(); }
       else if (key === 'Enter') { finish(false); e.preventDefault(); }
       else if (key === 'Escape') { finish(true); e.preventDefault(); }
+      else if (key.length === 1 && /[A-Za-z0-9 ]/.test(key)) {
+        slots[cursor] = charToSlotIndex(key);
+        renderSlots();
+        if (cursor < 2) { cursor++; renderSlots(); }
+        e.preventDefault();
+      }
     }
     document.addEventListener('keydown', onKey);
 
     slotEls.forEach(function (el, idx) {
-      el.up.addEventListener('click', function (e) { e.stopPropagation(); cursor = idx; cycleSlot(idx, -1); });
-      el.down.addEventListener('click', function (e) { e.stopPropagation(); cursor = idx; cycleSlot(idx, 1); });
+      el.up.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); cursor = idx; cycleSlot(idx, -1); });
+      el.up.addEventListener('touchend', function (e) { e.stopPropagation(); e.preventDefault(); cursor = idx; cycleSlot(idx, -1); });
+      el.down.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); cursor = idx; cycleSlot(idx, 1); });
+      el.down.addEventListener('touchend', function (e) { e.stopPropagation(); e.preventDefault(); cursor = idx; cycleSlot(idx, 1); });
 
-      var touchStartY = 0;
-      el.cell.addEventListener('touchstart', function (e) {
-        touchStartY = e.touches[0].clientY;
+      el.cell.addEventListener('click', function (e) {
+        e.stopPropagation();
         cursor = idx;
         renderSlots();
-      }, { passive: true });
-      el.cell.addEventListener('touchend', function (e) {
-        var dy = e.changedTouches[0].clientY - touchStartY;
-        if (Math.abs(dy) > 20) {
-          cycleSlot(idx, dy > 0 ? 1 : -1);
+        el.input.value = '';
+        el.input.focus();
+      });
+
+      el.input.addEventListener('input', function () {
+        var val = el.input.value;
+        if (val.length > 0) {
+          var ch = val.charAt(val.length - 1);
+          if (/[A-Za-z0-9 ]/.test(ch)) {
+            slots[idx] = charToSlotIndex(ch);
+            renderSlots();
+            if (cursor < 2) { cursor++; renderSlots(); }
+          }
+          el.input.value = '';
+          el.input.blur();
         }
-      }, { passive: true });
+      });
+
+      el.input.addEventListener('focus', function () {
+        cursor = idx;
+        renderSlots();
+      });
     });
 
-    leftBtn.addEventListener('click', function () { cursor = Math.max(0, cursor - 1); renderSlots(); });
-    rightBtn.addEventListener('click', function () { cursor = Math.min(2, cursor + 1); renderSlots(); });
-    confirmBtn.addEventListener('click', function () { finish(false); });
-    skipBtn.addEventListener('click', function () { finish(true); });
+    confirmBtn.addEventListener('click', function (e) { e.preventDefault(); finish(false); });
+    confirmBtn.addEventListener('touchend', function (e) { e.preventDefault(); finish(false); });
+    skipBtn.addEventListener('click', function (e) { e.preventDefault(); finish(true); });
+    skipBtn.addEventListener('touchend', function (e) { e.preventDefault(); finish(true); });
   }
 
   // ── Leaderboard Display UI ────────────────────────────────────────
@@ -330,8 +379,7 @@
   }
 
   function btnArrowStyle() {
-    return 'display:block;background:none;border:none;color:#0ff;font-size:22px;cursor:pointer;' +
-      'padding:4px 12px;line-height:1;text-shadow:0 0 6px #0ff;';
+    return '';
   }
 
   var blinkAdded = false;

@@ -13,6 +13,17 @@ class GameOverScene extends Phaser.Scene {
     const score = data?.score ?? 0;
     const highScore = data?.highScore ?? 0;
 
+    try {
+      if (window.KriiskoLeaderboard && window.KriiskoLeaderboard.qualifies('space-shooter', score)) {
+        window.KriiskoLeaderboard.promptInitials('space-shooter', score, (initials) => {
+          try {
+            if (initials && window.KriiskoLeaderboard) window.KriiskoLeaderboard.submit('space-shooter', score, initials);
+            if (window.KriiskoLeaderboard) window.KriiskoLeaderboard.show('space-shooter');
+          } catch (_) {}
+        });
+      }
+    } catch (_) {}
+
     this.cameras.main.setBackgroundColor(C.COLORS.BACKGROUND);
 
     this.add

@@ -629,8 +629,8 @@ class GameScene extends Phaser.Scene {
     this.physics.add.existing(bullet);
     bullet.body.setAllowGravity(false);
     bullet.body.setSize(3, 12, true);
-    bullet.body.setVelocity(vx, vy);
     this.playerBullets.add(bullet);
+    bullet.body.setVelocity(vx, vy);
     return bullet;
   }
 
@@ -648,8 +648,8 @@ class GameScene extends Phaser.Scene {
     this.physics.add.existing(bullet);
     bullet.body.setAllowGravity(false);
     bullet.body.setSize(isBossBullet ? 10 : 3, 10, true);
-    bullet.body.setVelocity(vx, vy);
     this.enemyBullets.add(bullet);
+    bullet.body.setVelocity(vx, vy);
     return bullet;
   }
 

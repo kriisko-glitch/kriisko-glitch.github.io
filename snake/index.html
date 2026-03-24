@@ -179,15 +179,19 @@
         if (loopId) clearTimeout(loopId);
         loopId = null;
         finalScoreEl.textContent = score;
-        if (window.KriiskoLeaderboard && window.KriiskoLeaderboard.qualifies('snake', score)) {
-          window.KriiskoLeaderboard.promptInitials('snake', score, function(initials) {
-            if (initials) window.KriiskoLeaderboard.submit('snake', score, initials);
-            window.KriiskoLeaderboard.show('snake');
-            gameoverOverlay.style.display = 'flex';
-          });
-        } else {
-          gameoverOverlay.style.display = 'flex';
-        }
+        try {
+          if (window.KriiskoLeaderboard && window.KriiskoLeaderboard.qualifies('snake', score)) {
+            window.KriiskoLeaderboard.promptInitials('snake', score, function(initials) {
+              try {
+                if (initials && window.KriiskoLeaderboard) window.KriiskoLeaderboard.submit('snake', score, initials);
+                if (window.KriiskoLeaderboard) window.KriiskoLeaderboard.show('snake');
+              } catch (_) {}
+              gameoverOverlay.style.display = 'flex';
+            });
+            return;
+          }
+        } catch (_) {}
+        gameoverOverlay.style.display = 'flex';
       }
 
       function start() {
@@ -245,7 +249,9 @@
   <script src="../shared/mobile-controls.js"></script>
   <script>
     document.getElementById('scores-btn').addEventListener('click', function() {
-      if (window.KriiskoLeaderboard) window.KriiskoLeaderboard.show('snake');
+      try {
+        if (window.KriiskoLeaderboard) window.KriiskoLeaderboard.show('snake');
+      } catch (_) {}
     });
   </script>
 </body>

@@ -488,6 +488,52 @@ export default class GameScene extends Phaser.Scene {
         this.handleEnemyExit(enemy);
       }
     }
+
+    this.checkTowerDamage();
+  }
+
+  checkTowerDamage() {
+    const enemies = this.enemies.getChildren();
+    const towerDamageRange = 80;
+
+    for (let ti = this.towers.length - 1; ti >= 0; ti--) {
+      const tower = this.towers[ti];
+      if (!tower.sprite.active) continue;
+
+      for (let ei = 0; ei < enemies.length; ei++) {
+        const enemy = enemies[ei];
+        if (!enemy.active || enemy.isDead) continue;
+
+        const dist = Phaser.Math.Distance.Between(tower.x, tower.y, enemy.x, enemy.y);
+        if (dist <= towerDamageRange) {
+          tower.hp -= 1;
+          this.updateTowerHpIndicator(tower);
+
+          if (tower.hp <= 0) {
+            this.destroyTower(tower, ti);
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  updateTowerHpIndicator(tower) {
+    if (!tower.hpIndicator) return;
+    const hearts = '♥'.repeat(Math.max(0, tower.hp));
+    tower.hpIndicator.setText(hearts);
+    if (tower.hp === 1) {
+      tower.hpIndicator.setColor('#ff0000');
+    } else if (tower.hp === 2) {
+      tower.hpIndicator.setColor('#ff8800');
+    }
+  }
+
+  destroyTower(tower, index) {
+    if (tower.sprite) tower.sprite.destroy();
+    if (tower.hpIndicator) tower.hpIndicator.destroy();
+    this.occupiedCellSet.delete(this.cellKey(tower.col, tower.row));
+    this.towers.splice(index, 1);
   }
 
   healNearbyEnemies(healer) {
@@ -749,8 +795,18 @@ export default class GameScene extends Phaser.Scene {
       slowDurationMs: towerDef.slowDurationMs,
       baseCost: towerDef.cost,
       upgraded: false,
-      nextShotAt: this.time.now
+      nextShotAt: this.time.now,
+      hp: 3,
+      maxHp: 3,
+      hpIndicator: null
     };
+
+    tower.hpIndicator = this.add.text(
+      worldPosition.x,
+      worldPosition.y - this.cfg.TOWERS.BASE_SIZE * 0.5 - 6,
+      '♥♥♥',
+      { fontFamily: 'sans-serif', fontSize: '10px', color: '#ff4444' }
+    ).setOrigin(0.5).setDepth(this.cfg.DEPTH.TOWER + 1);
 
     this.towers.push(tower);
     this.occupiedCellSet.add(this.cellKey(col, row));
