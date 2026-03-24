@@ -425,15 +425,6 @@
     this.floorLayer.setPosition(cx, cy);
     this.midLayer.setPosition(cx, cy);
     this.starLayer.setPosition(cx, cy);
-
-    this.floorLayer.tilePositionX = cam.scrollX * 0.5;
-    this.floorLayer.tilePositionY = cam.scrollY * 0.5;
-
-    this.midLayer.tilePositionX = cam.scrollX * 0.2;
-    this.midLayer.tilePositionY = cam.scrollY * 0.2;
-
-    this.starLayer.tilePositionX = cam.scrollX * 0.05;
-    this.starLayer.tilePositionY = cam.scrollY * 0.05;
   };
 
   GameScene.prototype.updatePlayerMovement = function (delta) {
@@ -1146,12 +1137,18 @@
     }
 
     gem.enableBody(true, x, y, true, true);
+    if (!gem.body) {
+      this.physics.world.enable(gem);
+    }
     gem.setTexture(this.cfg.TEXTURES.GEM);
     gem.setDepth(7);
     gem.setData("xp", xpValue);
     gem.setData("magnetized", false);
     gem.setScale(1);
-    gem.body.setCircle(12);
+    gem.body.setAllowGravity(false);
+    gem.body.setImmovable(false);
+    gem.body.setCircle(12, Math.max(0, (gem.width - 24) * 0.5), Math.max(0, (gem.height - 24) * 0.5));
+    gem.body.reset(x, y);
 
     this.tweens.killTweensOf(gem);
     this.tweens.add({

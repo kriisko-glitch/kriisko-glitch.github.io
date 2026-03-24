@@ -237,11 +237,25 @@
     bindDpadBtn(left,  'moveLeft',  'stopX', [['ArrowLeft', 'ArrowLeft'], ['KeyA', 'a']]);
     bindDpadBtn(right, 'moveRight', 'stopX', [['ArrowRight', 'ArrowRight'], ['KeyD', 'd']]);
 
-    var actionBtn = addBtn(overlay, '\u26A1', dBaseB, undefined, 16);
+    function getAttackLabel() {
+      var api = window.__gameAPI;
+      return api && typeof api.attackLabel === 'string' && api.attackLabel ? api.attackLabel : '\u26A1';
+    }
+
+    var actionBtn = addBtn(overlay, getAttackLabel(), dBaseB, undefined, 16);
     actionBtn.style.width = '70px';
     actionBtn.style.height = '70px';
     actionBtn.style.borderRadius = '50%';
     actionBtn.style.fontSize = '28px';
+    function syncActionLabel() {
+      var label = getAttackLabel();
+      if (actionBtn.textContent !== label) actionBtn.textContent = label;
+    }
+    syncActionLabel();
+    var actionLabelInterval = window.setInterval(syncActionLabel, 250);
+    window.addEventListener('beforeunload', function () {
+      window.clearInterval(actionLabelInterval);
+    }, { once: true });
     (function () {
       var active = false;
       actionBtn.addEventListener('touchstart', function (e) {

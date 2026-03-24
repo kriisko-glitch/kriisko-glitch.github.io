@@ -279,11 +279,15 @@
         moveDown: function() { scene.moveDir.y = 1; },
         stopX: function() { scene.moveDir.x = 0; },
         stopY: function() { scene.moveDir.y = 0; },
-        attack: function() { scene.tryPlayerAttack(); }
+        attackLabel: "\u2694\ufe0f",
+        attack: function() {
+          scene.performAttack();
+          return true;
+        }
       };
 
       if ('ontouchstart' in window) {
-        this.add.text(this.scale.width - 10, this.scale.height - 10, '\u26A1 = ATTACK', {
+        this.add.text(this.scale.width - 10, this.scale.height - 10, '\u2694\ufe0f = ATTACK', {
           fontSize: '12px', color: '#ffff00'
         }).setOrigin(1, 1).setScrollFactor(0).setDepth(500).setAlpha(0.7);
       }
@@ -864,7 +868,7 @@
       }
       var opened = this.tryOpenNearestChest(80, pointer.worldX, pointer.worldY);
       if (!opened) {
-        this.tryPlayerAttack(pointer.worldX, pointer.worldY);
+        this.performAttack(pointer.worldX, pointer.worldY);
       }
     }
 
@@ -887,7 +891,7 @@
       this.broadcastMap(false);
 
       if (Phaser.Input.Keyboard.JustDown(this.keys.attack)) {
-        this.tryPlayerAttack();
+        this.performAttack();
       }
       if (Phaser.Input.Keyboard.JustDown(this.keys.interact)) {
         this.tryOpenNearestChest(this.cfg.TILE_SIZE * 1.2, this.player.x, this.player.y);
@@ -918,11 +922,11 @@
       }
     }
 
-    tryPlayerAttack(targetWorldX, targetWorldY) {
+    performAttack(targetWorldX, targetWorldY) {
       var now = this.time.now;
       var cfg = this.cfg;
       if (now < this.playerAttackReadyAt || this.transitioning) {
-        return;
+        return false;
       }
       this.playerAttackReadyAt = now + cfg.PLAYER.ATTACK_COOLDOWN_MS;
 
@@ -940,6 +944,7 @@
       var arcHalfRad = Phaser.Math.DegToRad(cfg.PLAYER.ATTACK_ARC_DEG * 0.5);
       var range = cfg.PLAYER.ATTACK_RANGE;
       var scene = this;
+      var hitEnemy = false;
 
       this.enemies.children.each(function (enemy) {
         if (!enemy.active) {
@@ -954,9 +959,16 @@
         var facingAngle = Math.atan2(scene.playerFacing.y, scene.playerFacing.x);
         var angleDiff = Math.abs(Phaser.Math.Angle.Wrap(angle - facingAngle));
         if (angleDiff <= arcHalfRad) {
+          hitEnemy = true;
           scene.applyDamageToEnemy(enemy, scene.runState.player.attack, scene.player);
         }
       });
+
+      return hitEnemy;
+    }
+
+    tryPlayerAttack(targetWorldX, targetWorldY) {
+      return this.performAttack(targetWorldX, targetWorldY);
     }
 
     applyDamageToEnemy(enemy, attackValue, attackerSprite) {
@@ -965,12 +977,15 @@
       }
       var damage = Math.max(1, attackValue - enemy.getData("defense"));
       enemy.setData("hp", enemy.getData("hp") - damage);
-      enemy.setTintFill(0xffffff);
-      this.time.delayedCall(this.cfg.FX.DAMAGE_FLASH_MS, function () {
+      enemy.setTint(0xffffff);
+      this.time.delayedCall(100, function () {
         if (enemy.active) {
           enemy.clearTint();
         }
       });
+      if (attackerSprite === this.player) {
+        this.showDamageIndicator("-" + damage, enemy.x, enemy.y);
+      }
       this.audioSystem.playEnemyHit();
 
       var knock = new Phaser.Math.Vector2(enemy.x - attackerSprite.x, enemy.y - attackerSprite.y).normalize();
@@ -983,6 +998,28 @@
       if (enemy.getData("hp") <= 0) {
         this.killEnemy(enemy);
       }
+    }
+
+    showDamageIndicator(text, x, y) {
+      var indicator = this.add.text(x, y - 12, text, {
+        fontFamily: "Trebuchet MS",
+        fontSize: "14px",
+        color: "#ffffff",
+        fontStyle: "bold",
+        stroke: "#2b1f1f",
+        strokeThickness: 3
+      }).setOrigin(0.5).setDepth(this.cfg.DEPTH.SCREEN_FX + 1);
+
+      this.tweens.add({
+        targets: indicator,
+        y: y - 28,
+        alpha: 0,
+        duration: 500,
+        ease: "Cubic.Out",
+        onComplete: function () {
+          indicator.destroy();
+        }
+      });
     }
 
     handleEnemyContactWithPlayer(enemy) {
