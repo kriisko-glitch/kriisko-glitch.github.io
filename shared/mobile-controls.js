@@ -20,11 +20,20 @@
 
   // --- Helpers -----------------------------------------------------------
 
+  var BTN_SIZE = 64;
+  var BTN_GAP = 6;
+
+  var KEY_CODES = {
+    ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39,
+    Space: 32, Enter: 13,
+    KeyW: 87, KeyA: 65, KeyS: 83, KeyD: 68, KeyX: 88, KeyE: 69
+  };
+
   function dispatch(type, code, key) {
-    var ev = new KeyboardEvent(type, {
-      code: code, key: key, bubbles: true, cancelable: true
-    });
-    document.dispatchEvent(ev);
+    var kc = KEY_CODES[code] || 0;
+    var opts = { code: code, key: key, keyCode: kc, which: kc, bubbles: true, cancelable: true };
+    document.dispatchEvent(new KeyboardEvent(type, opts));
+    window.dispatchEvent(new KeyboardEvent(type, opts));
   }
 
   function dispatchDown(code, key) { dispatch('keydown', code, key); }
@@ -35,9 +44,6 @@
     s.textContent = css;
     document.head.appendChild(s);
   }
-
-  var BTN_SIZE = 64;
-  var BTN_GAP = 6;
 
   var OVERLAY_CSS =
     '.mc-overlay{position:fixed;bottom:0;left:0;width:100%;height:100%;' +
@@ -90,9 +96,14 @@
   if (scheme === 'swipe') {
     var startX = 0, startY = 0;
     document.addEventListener('touchstart', function (e) {
+      e.preventDefault();
       var t = e.touches[0];
       startX = t.clientX; startY = t.clientY;
-    }, { passive: true });
+    }, { passive: false });
+
+    document.addEventListener('touchmove', function (e) {
+      e.preventDefault();
+    }, { passive: false });
 
     document.addEventListener('touchend', function (e) {
       var t = e.changedTouches[0];
@@ -160,30 +171,67 @@
 
   if (scheme === 'dpad') {
     var overlay = createOverlay();
-    var pad = BTN_SIZE + BTN_GAP;
-    var baseL = 16;
-    var baseB = 24;
+    overlay.style.opacity = '0.75';
 
-    var up    = addBtn(overlay, '\u25B2', baseB + pad * 2, baseL + pad);
-    var down  = addBtn(overlay, '\u25BC', baseB,           baseL + pad);
-    var left  = addBtn(overlay, '\u25C0', baseB + pad,     baseL);
-    var right = addBtn(overlay, '\u25B6', baseB + pad,     baseL + pad * 2);
+    var dSz = 48;
+    var dGap = 4;
+    var dPad = dSz + dGap;
+    var dBaseL = 16;
+    var dBaseB = 16;
 
-    bindBtn(up,    'ArrowUp',    'ArrowUp');
-    bindBtn(down,  'ArrowDown',  'ArrowDown');
-    bindBtn(left,  'ArrowLeft',  'ArrowLeft');
-    bindBtn(right, 'ArrowRight', 'ArrowRight');
+    var up    = addBtn(overlay, '\u25B2', dBaseB + dPad * 2, dBaseL + dPad);
+    var down  = addBtn(overlay, '\u25BC', dBaseB,            dBaseL + dPad);
+    var left  = addBtn(overlay, '\u25C0', dBaseB + dPad,     dBaseL);
+    var right = addBtn(overlay, '\u25B6', dBaseB + dPad,     dBaseL + dPad * 2);
 
-    var actionBtn = addBtn(overlay, '\u26A1', baseB + pad, undefined, 24);
-    actionBtn.style.width = (BTN_SIZE * 1.3) + 'px';
-    actionBtn.style.height = (BTN_SIZE * 1.3) + 'px';
+    [up, down, left, right].forEach(function (b) {
+      b.style.width = dSz + 'px';
+      b.style.height = dSz + 'px';
+      b.style.fontSize = '18px';
+    });
+
+    function bindBtnMulti(btn, pairs) {
+      var active = false;
+      btn.addEventListener('touchstart', function (e) {
+        e.preventDefault();
+        if (!active) {
+          active = true;
+          btn.classList.add('held');
+          pairs.forEach(function (p) { dispatchDown(p[0], p[1]); });
+        }
+      }, { passive: false });
+      btn.addEventListener('touchend', function (e) {
+        e.preventDefault();
+        if (active) {
+          active = false;
+          btn.classList.remove('held');
+          pairs.forEach(function (p) { dispatchUp(p[0], p[1]); });
+        }
+      }, { passive: false });
+      btn.addEventListener('touchcancel', function () {
+        if (active) {
+          active = false;
+          btn.classList.remove('held');
+          pairs.forEach(function (p) { dispatchUp(p[0], p[1]); });
+        }
+      });
+    }
+
+    bindBtnMulti(up,    [['ArrowUp', 'ArrowUp'], ['KeyW', 'w']]);
+    bindBtnMulti(down,  [['ArrowDown', 'ArrowDown'], ['KeyS', 's']]);
+    bindBtnMulti(left,  [['ArrowLeft', 'ArrowLeft'], ['KeyA', 'a']]);
+    bindBtnMulti(right, [['ArrowRight', 'ArrowRight'], ['KeyD', 'd']]);
+
+    var actionBtn = addBtn(overlay, '\u26A1', dBaseB, undefined, 16);
+    actionBtn.style.width = '70px';
+    actionBtn.style.height = '70px';
     actionBtn.style.borderRadius = '50%';
     actionBtn.style.fontSize = '28px';
     bindBtn(actionBtn, 'Space', ' ');
 
-    var action2 = addBtn(overlay, 'X', baseB + pad * 2 + BTN_GAP, undefined, 24);
-    action2.style.width = BTN_SIZE + 'px';
-    action2.style.height = (BTN_SIZE * 0.7) + 'px';
+    var action2 = addBtn(overlay, 'X', dBaseB + 70 + dGap, undefined, 16);
+    action2.style.width = '56px';
+    action2.style.height = '44px';
     action2.style.fontSize = '16px';
     bindBtn(action2, 'KeyX', 'x');
 
@@ -297,4 +345,16 @@
 
   var cvs = document.querySelector('canvas');
   if (cvs) cvs.style.touchAction = 'none';
+
+  document.addEventListener('touchend', function (e) {
+    if (e.defaultPrevented) return;
+    var t = e.changedTouches[0];
+    if (!t) return;
+    var target = document.elementFromPoint(t.clientX, t.clientY) || document.body;
+    var click = new MouseEvent('click', {
+      clientX: t.clientX, clientY: t.clientY,
+      bubbles: true, cancelable: true, view: window
+    });
+    target.dispatchEvent(click);
+  }, { passive: true });
 })();

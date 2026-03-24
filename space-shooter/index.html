@@ -43,7 +43,7 @@
     }
   </style>
 </head>
-<body data-mobile-controls="dpad">
+<body data-mobile-controls="click">
   <div id="game-root"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.87.0/phaser.min.js"></script>
   <script>
@@ -1589,6 +1589,13 @@ class GameOverScene extends Phaser.Scene {
 
     this.cameras.main.setBackgroundColor(C.COLORS.BACKGROUND);
 
+    if (window.KriiskoLeaderboard && window.KriiskoLeaderboard.qualifies('space-shooter', score)) {
+      window.KriiskoLeaderboard.promptInitials('space-shooter', score, (initials) => {
+        if (initials) window.KriiskoLeaderboard.submit('space-shooter', score, initials);
+        window.KriiskoLeaderboard.show('space-shooter');
+      });
+    }
+
     this.add
       .text(centerX, centerY - 110, 'GAME OVER', {
         fontFamily: C.UI.FONT_FAMILY,
@@ -1664,6 +1671,7 @@ window.SpaceShooter.game = new Phaser.Game(phaserConfig);
 
 
   </script>
+  <script src="../shared/leaderboard.js"></script>
   <script src="../shared/mobile-controls.js"></script>
 </body>
 </html>

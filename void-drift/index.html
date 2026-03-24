@@ -7,20 +7,22 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
+      margin: 0; padding: 0;
       width: 100%; height: 100%;
       overflow: hidden;
-      background: #050510;
+      background: #000;
       color: #ffffff;
       font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
     }
     body { display: grid; place-items: center; }
-    #game-root { width: 100%; height: 100%; display: grid; place-items: center; }
-    canvas { image-rendering: auto; display: block; }
+    #game-root { width: 100vw; height: 100dvh; display: grid; place-items: center; }
+    canvas { image-rendering: auto; display: block; max-width: 100vw !important; max-height: 100vh !important; }
   </style>
   <script type="module" crossorigin src="./assets/index-D_w03f0o.js"></script>
 </head>
 <body data-mobile-controls="joystick">
   <div id="game-root"></div>
+  <script src="../shared/leaderboard.js"></script>
   <script src="../shared/mobile-controls.js"></script>
 </body>
 </html>
