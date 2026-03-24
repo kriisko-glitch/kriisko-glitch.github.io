@@ -71,10 +71,10 @@
         }
 
         self.drawProgress(1);
-        self.time.delayedCall(140, function () {
+        window.setTimeout(function () {
           self.scene.start("GameScene");
           self.scene.launch("HUDScene");
-        });
+        }, 140);
       }
     });
   };

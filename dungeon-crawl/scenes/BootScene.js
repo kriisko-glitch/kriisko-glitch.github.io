@@ -64,17 +64,17 @@
           var ratio = stepIndex / steps.length;
           barFill.width = 356 * ratio;
           status.setText("Generating assets " + Math.floor(ratio * 100) + "%");
-          this.time.delayedCall(40, runStep);
+          window.setTimeout(() => runStep(), 40);
           return;
         }
 
         status.setText("Entering dungeon...");
-        this.time.delayedCall(140, () => {
+        window.setTimeout(() => {
           title.destroy();
           subtitle.destroy();
           this.scene.start("GameScene");
           this.scene.launch("HUDScene");
-        });
+        }, 140);
       };
 
       runStep();

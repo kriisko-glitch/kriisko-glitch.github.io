@@ -22,8 +22,6 @@ class BootScene extends Phaser.Scene {
       letterSpacing: 6
     }).setOrigin(0.5);
 
-    this.time.delayedCall(1500, () => {
-      this.scene.start("GameScene", { resetRun: true });
-    });
+    window.setTimeout(() => { this.scene.start("GameScene", { resetRun: true }); }, 1500);
   }
 }
