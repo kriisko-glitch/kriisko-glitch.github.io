@@ -20,6 +20,14 @@
       var cfg = window.DungeonCrawl.CONFIG;
       this.cameras.main.setBackgroundColor("#05060c");
       this.cameras.main.fadeIn(cfg.FX.FADE_DURATION_MS);
+      var dcScore = this.stats.score || 0;
+
+      if (window.KriiskoLeaderboard && window.KriiskoLeaderboard.qualifies('dungeon-crawl', dcScore)) {
+        window.KriiskoLeaderboard.promptInitials('dungeon-crawl', dcScore, function(initials) {
+          if (initials) window.KriiskoLeaderboard.submit('dungeon-crawl', dcScore, initials);
+          window.KriiskoLeaderboard.show('dungeon-crawl');
+        });
+      }
 
       this.add
         .text(cfg.GAME.WIDTH * 0.5, 120, "GAME OVER", {

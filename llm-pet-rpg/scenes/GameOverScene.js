@@ -9,6 +9,14 @@
   GameOverScene.prototype.create = function(data) {
     var w = CONFIG.GAME.WIDTH;
     var h = CONFIG.GAME.HEIGHT;
+    var rpgScore = (data && data.score) ? data.score : 0;
+
+    if (window.KriiskoLeaderboard && window.KriiskoLeaderboard.qualifies('llm-pet-rpg', rpgScore)) {
+      window.KriiskoLeaderboard.promptInitials('llm-pet-rpg', rpgScore, function(initials) {
+        if (initials) window.KriiskoLeaderboard.submit('llm-pet-rpg', rpgScore, initials);
+        window.KriiskoLeaderboard.show('llm-pet-rpg');
+      });
+    }
 
     CONFIG.EVENT_BUS.emit(CONFIG.EVENTS.HUD_HIDE);
 

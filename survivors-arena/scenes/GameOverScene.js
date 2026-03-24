@@ -22,6 +22,14 @@
 
     var w = this.cfg.GAME.WIDTH;
     var h = this.cfg.GAME.HEIGHT;
+    var saScore = this.stats.score || 0;
+
+    if (window.KriiskoLeaderboard && window.KriiskoLeaderboard.qualifies('survivors-arena', saScore)) {
+      window.KriiskoLeaderboard.promptInitials('survivors-arena', saScore, function(initials) {
+        if (initials) window.KriiskoLeaderboard.submit('survivors-arena', saScore, initials);
+        window.KriiskoLeaderboard.show('survivors-arena');
+      });
+    }
 
     this.cameras.main.setBackgroundColor("#17070b");
     this.add.rectangle(w * 0.5, h * 0.5, w, h, 0x1b0910, 0.95);

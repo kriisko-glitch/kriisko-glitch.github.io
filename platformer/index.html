@@ -1047,6 +1047,13 @@ class GameOverScene extends Phaser.Scene {
 
     this.cameras.main.setBackgroundColor("#06060d");
 
+    if (window.KriiskoLeaderboard && window.KriiskoLeaderboard.qualifies('platformer', score)) {
+      window.KriiskoLeaderboard.promptInitials('platformer', score, (initials) => {
+        if (initials) window.KriiskoLeaderboard.submit('platformer', score, initials);
+        window.KriiskoLeaderboard.show('platformer');
+      });
+    }
+
     this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.45);
 
     this.add.text(width / 2, 180, "GAME OVER", {
@@ -1316,6 +1323,7 @@ const phaserConfig = {
 window.Platformer.game = new Phaser.Game(phaserConfig);
 
   </script>
+  <script src="../shared/leaderboard.js"></script>
   <script src="../shared/mobile-controls.js"></script>
 </body>
 </html>

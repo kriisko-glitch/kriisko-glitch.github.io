@@ -10,6 +10,14 @@ export default class GameOverScene extends Phaser.Scene {
 
     const centerX = this.cfg.CANVAS_WIDTH / 2;
     const centerY = this.cfg.CANVAS_HEIGHT / 2;
+    const tdScore = Math.floor(data.score || 0);
+
+    if (window.KriiskoLeaderboard && window.KriiskoLeaderboard.qualifies('tower-defense', tdScore)) {
+      window.KriiskoLeaderboard.promptInitials('tower-defense', tdScore, (initials) => {
+        if (initials) window.KriiskoLeaderboard.submit('tower-defense', tdScore, initials);
+        window.KriiskoLeaderboard.show('tower-defense');
+      });
+    }
 
     const backdrop = this.add.rectangle(
       centerX,

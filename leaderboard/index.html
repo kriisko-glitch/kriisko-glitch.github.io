@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kriisko-Studio — Hall of Fame</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #000;
+      color: #0ff;
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+      position: relative;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9999;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px);
+    }
+
+    h1 {
+      font-size: 2.2rem;
+      color: #0ff;
+      text-shadow: 0 0 12px #0ff, 0 0 24px rgba(0,255,255,0.3);
+      letter-spacing: 4px;
+      margin-bottom: 0.25rem;
+      text-align: center;
+    }
+
+    .sub {
+      color: #555;
+      font-size: 0.85rem;
+      margin-bottom: 1.5rem;
+      text-align: center;
+    }
+
+    .back-link {
+      color: #0ff;
+      text-decoration: none;
+      font-size: 0.9rem;
+      margin-bottom: 1.5rem;
+      display: inline-block;
+    }
+    .back-link:hover { color: #fff; }
+
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      justify-content: center;
+      margin-bottom: 2rem;
+      max-width: 900px;
+    }
+
+    .tab {
+      background: rgba(0,255,255,0.08);
+      border: 1px solid #0ff;
+      color: #0ff;
+      padding: 8px 14px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-shadow: 0 0 6px rgba(0,255,255,0.4);
+    }
+    .tab:hover { background: rgba(0,255,255,0.2); }
+    .tab.active {
+      background: #0ff;
+      color: #000;
+      font-weight: bold;
+      text-shadow: none;
+      box-shadow: 0 0 12px #0ff;
+    }
+
+    .board {
+      width: 100%;
+      max-width: 600px;
+    }
+
+    .board-title {
+      text-align: center;
+      font-size: 1.5rem;
+      color: #0ff;
+      text-shadow: 0 0 10px #0ff;
+      letter-spacing: 2px;
+      margin-bottom: 1rem;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 1.5rem;
+    }
+
+    th {
+      color: #888;
+      font-size: 12px;
+      border-bottom: 1px solid #333;
+      padding: 8px 6px;
+      text-align: center;
+    }
+
+    td {
+      padding: 8px 6px;
+      text-align: center;
+      font-size: 16px;
+    }
+
+    .rank-1 { color: #ffd700; font-weight: bold; }
+    .rank-2 { color: #c0c0c0; font-weight: bold; }
+    .rank-3 { color: #cd7f32; font-weight: bold; }
+    .rank-n { color: #0ff; }
+
+    .score-val { color: #fff; }
+    .date-val { color: #555; font-size: 12px; }
+
+    .empty { color: #444; padding: 32px; font-size: 14px; text-align: center; }
+
+    .play-link {
+      display: block;
+      text-align: center;
+      margin-top: 0.5rem;
+    }
+    .play-link a {
+      display: inline-block;
+      padding: 8px 24px;
+      border: 2px solid #0ff;
+      color: #0ff;
+      text-decoration: none;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      font-weight: bold;
+      text-shadow: 0 0 8px #0ff;
+      transition: all 0.15s;
+    }
+    .play-link a:hover {
+      background: #0ff;
+      color: #000;
+      text-shadow: none;
+      box-shadow: 0 0 16px #0ff;
+    }
+
+    @keyframes blink { 50% { opacity: 0; } }
+    .blink { animation: blink 1.2s step-end infinite; }
+  </style>
+</head>
+<body>
+  <h1>&#127942; HALL OF FAME</h1>
+  <p class="sub">Kriisko-Studio Arcade Leaderboards</p>
+  <a class="back-link" href="../">&larr; BACK TO GAMES</a>
+
+  <div class="tabs" id="tabs"></div>
+  <div class="board" id="board"></div>
+
+  <script src="../shared/leaderboard.js"></script>
+  <script>
+  (function () {
+    var GAMES = [
+      { key: 'snake', name: 'Snake', path: '../snake/index.html' },
+      { key: 'breakout', name: 'Breakout', path: '../breakout/index.html' },
+      { key: 'space-shooter', name: 'Space Shooter', path: '../space-shooter/index.html' },
+      { key: 'platformer', name: 'Platformer', path: '../platformer/index.html' },
+      { key: 'tower-defense', name: 'Tower Defense', path: '../tower-defense/index.html' },
+      { key: 'survivors-arena', name: 'Survivors Arena', path: '../survivors-arena/index.html' },
+      { key: 'dungeon-crawl', name: 'Dungeon Crawl', path: '../dungeon-crawl/index.html' },
+      { key: 'llm-pet-rpg', name: 'Whiskers & Wands', path: '../llm-pet-rpg/index.html' },
+      { key: 'void-drift', name: 'Void Drift', path: '../void-drift/index.html' },
+      { key: 'particle-forge', name: 'Particle Forge', path: '../particle-forge/index.html' }
+    ];
+
+    var RANK_CLASSES = ['rank-1', 'rank-2', 'rank-3'];
+    var tabsEl = document.getElementById('tabs');
+    var boardEl = document.getElementById('board');
+    var activeKey = GAMES[0].key;
+
+    function renderTabs() {
+      tabsEl.innerHTML = '';
+      GAMES.forEach(function (g) {
+        var btn = document.createElement('button');
+        btn.className = 'tab' + (g.key === activeKey ? ' active' : '');
+        btn.textContent = g.name;
+        btn.addEventListener('click', function () {
+          activeKey = g.key;
+          renderTabs();
+          renderBoard();
+        });
+        tabsEl.appendChild(btn);
+      });
+    }
+
+    function renderBoard() {
+      var game = GAMES.find(function (g) { return g.key === activeKey; });
+      if (!game) return;
+
+      var board = window.KriiskoLeaderboard.getTop10(game.key);
+
+      var html = '<div class="board-title">' + game.name.toUpperCase() + ' HIGH SCORES</div>';
+      html += '<table><tr><th>RANK</th><th>NAME</th><th>SCORE</th><th>DATE</th></tr>';
+
+      if (board.length === 0) {
+        html += '<tr><td colspan="4" class="empty">NO SCORES YET — GO PLAY!</td></tr>';
+      } else {
+        for (var i = 0; i < board.length; i++) {
+          var rc = i < 3 ? RANK_CLASSES[i] : 'rank-n';
+          html += '<tr>';
+          html += '<td class="' + rc + '">' + (i + 1) + '</td>';
+          html += '<td class="' + rc + '" style="letter-spacing:4px;">' + board[i].initials + '</td>';
+          html += '<td class="score-val">' + board[i].score + '</td>';
+          html += '<td class="date-val">' + (board[i].date || '') + '</td>';
+          html += '</tr>';
+        }
+      }
+
+      html += '</table>';
+      html += '<div class="play-link"><a href="' + game.path + '">&#9654; PLAY ' + game.name.toUpperCase() + '</a></div>';
+
+      boardEl.innerHTML = html;
+    }
+
+    renderTabs();
+    renderBoard();
+  })();
+  </script>
+</body>
+</html>

@@ -69,6 +69,7 @@
   <main class="game-wrap">
     <section class="hud" aria-live="polite">
       <div id="score-display">Score: 0</div>
+      <button id="scores-btn" style="padding:4px 12px;font-size:0.8rem;cursor:pointer;background:#0f3460;color:#fff;border:none;border-radius:4px;" onclick="if(window.KriiskoLeaderboard)window.KriiskoLeaderboard.show('breakout')">&#127942; Scores</button>
       <div id="level-display">Level: 1</div>
     </section>
     <div class="canvas-frame">
@@ -462,6 +463,12 @@ function updateBalls(dt) {
 
   if (game.balls.length === 0) {
     game.state = GAME_STATES.DEAD;
+    if (window.KriiskoLeaderboard && window.KriiskoLeaderboard.qualifies('breakout', game.score)) {
+      window.KriiskoLeaderboard.promptInitials('breakout', game.score, function(initials) {
+        if (initials) window.KriiskoLeaderboard.submit('breakout', game.score, initials);
+        window.KriiskoLeaderboard.show('breakout');
+      });
+    }
   }
 }
 
@@ -636,6 +643,7 @@ init();
   };
 })();
   </script>
+  <script src="../shared/leaderboard.js"></script>
   <script src="../shared/mobile-controls.js"></script>
 </body>
 </html>
