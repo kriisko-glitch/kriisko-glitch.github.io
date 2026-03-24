@@ -74,12 +74,12 @@
       this.nameInput.addEventListener('keydown', this.onNameInputKeyDown);
     }
 
-    this.updateAIStatus(OllamaService.online);
+    this.updateAIStatus(GeminiService.online);
 
     this.onAIStatus = this.updateAIStatus.bind(this);
     CONFIG.EVENT_BUS.on(CONFIG.EVENTS.AI_STATUS, this.onAIStatus);
 
-    OllamaService.healthCheck()
+    GeminiService.healthCheck()
       .then(function(online) {
         CONFIG.EVENT_BUS.emit(CONFIG.EVENTS.AI_STATUS, online);
       })

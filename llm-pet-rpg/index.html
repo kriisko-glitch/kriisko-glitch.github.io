@@ -136,6 +136,30 @@
       box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.23);
     }
 
+    #mobile-talk-btn {
+      display: none;
+      position: absolute;
+      left: 50%;
+      bottom: 14px;
+      transform: translateX(-50%);
+      width: 200px;
+      height: 60px;
+      border-radius: 12px;
+      border: 2px solid var(--gold);
+      background: rgba(16, 20, 39, 0.92);
+      color: var(--gold);
+      font-family: 'Georgia', serif;
+      font-size: 20px;
+      cursor: pointer;
+      z-index: 26;
+      pointer-events: auto;
+      backdrop-filter: blur(3px);
+    }
+
+    #mobile-talk-btn:active {
+      background: rgba(255, 193, 7, 0.2);
+    }
+
     @media (max-width: 820px) {
       #game-shell {
         width: 100vw;
@@ -145,6 +169,20 @@
       #game-shell canvas {
         width: 100% !important;
         height: 100% !important;
+      }
+      #mobile-talk-btn {
+        display: block;
+      }
+      #chat-input-overlay {
+        left: 50%;
+        right: auto;
+        bottom: 84px;
+        transform: translateX(-50%);
+        width: 80%;
+      }
+      #chat-input {
+        height: 44px;
+        font-size: 16px;
       }
     }
   </style>
@@ -165,8 +203,10 @@
     <div id="chat-input-overlay" aria-label="Chat Input">
       <input id="chat-input" type="text" maxlength="140" placeholder="Type to your companion..." autocomplete="off" spellcheck="false" />
     </div>
+    <button id="mobile-talk-btn" aria-label="Talk to companion">&#x1F4AC; Talk</button>
   </div>
 
+  <script>window.GEMINI_API_KEY = 'AIzaSyCcB7qv7ToYYIoa8BcgPLBT5AyJVtBv2fs';</script>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.87.0/dist/phaser.min.js"></script>
   <script src="../shared/leaderboard.js"></script>
   <script src="scenes/BootScene.js"></script>
@@ -176,5 +216,18 @@
   <script src="scenes/GameOverScene.js"></script>
   <script src="game.js"></script>
   <script src="../shared/mobile-controls.js"></script>
+  <script>
+  (function() {
+    var talkBtn = document.getElementById('mobile-talk-btn');
+    if (!talkBtn) return;
+    talkBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var input = document.getElementById('chat-input');
+      var overlay = document.getElementById('chat-input-overlay');
+      if (overlay) overlay.style.display = 'block';
+      if (input) input.focus();
+    });
+  })();
+  </script>
 </body>
 </html>

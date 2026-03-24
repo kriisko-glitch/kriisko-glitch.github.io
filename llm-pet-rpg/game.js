@@ -132,7 +132,7 @@ var CONFIG = {
     EXIT_PULSE_MAX: 1.25
   },
   TIMERS: {
-    OLLAMA_HEALTH_MS: 10000,
+    AI_HEALTH_MS: 10000,
     HUD_REFRESH_MS: 120,
     FOOTSTEP_MS: 280
   },
@@ -349,66 +349,65 @@ var AudioService = {
 
 CONFIG.AudioService = AudioService;
 
-var OllamaService = {
-  BASE_URL: 'http://localhost:11434',
-  MODEL: 'qwen2.5:1.5b',
+var GeminiService = {
   online: false,
 
+  getEndpoint: function() {
+    var key = window.GEMINI_API_KEY || '';
+    return 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + key;
+  },
+
   healthCheck: function() {
-    return fetch(this.BASE_URL + '/api/version')
-      .then(function(r) { return r.json(); })
-      .then(function() {
-        OllamaService.online = true;
-        return true;
-      })
-      .catch(function() {
-        OllamaService.online = false;
-        return false;
-      });
+    if (!window.GEMINI_API_KEY) {
+      GeminiService.online = false;
+      return Promise.resolve(false);
+    }
+    GeminiService.online = true;
+    return Promise.resolve(true);
   },
 
   chat: function(systemPrompt, userMessage, maxTokens) {
     if (!this.online) { return Promise.resolve(null); }
-    return fetch(this.BASE_URL + '/api/chat', {
+    var prompt = 'SYSTEM: ' + systemPrompt +
+      '\n\nUSER INPUT:\n' + userMessage +
+      '\n\nRespond with ONLY a valid JSON object: {"action":"...","target":"...","message":"..."}. No markdown fences, no explanation.';
+
+    return fetch(this.getEndpoint(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: this.MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage }
-        ],
-        stream: false,
-        format: {
-          type: 'object',
-          properties: {
-            action: { type: 'string', enum: ['FOLLOW', 'ATTACK', 'PICKUP', 'SAY', 'IDLE', 'HEAL'] },
-            target: { type: 'string' },
-            message: { type: 'string' }
-          },
-          required: ['action', 'target', 'message']
-        },
-        options: { num_predict: maxTokens || 60 }
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          maxOutputTokens: maxTokens || 60,
+          temperature: 0.9
+        }
       })
     })
       .then(function(r) { return r.json(); })
       .then(function(data) {
-        try { return JSON.parse(data.message.content); }
-        catch (e) { return null; }
+        try {
+          var text = data.candidates[0].content.parts[0].text;
+          var jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) { return JSON.parse(jsonMatch[0]); }
+          return null;
+        } catch (e) { return null; }
       })
-      .catch(function() { return null; });
+      .catch(function() {
+        GeminiService.online = false;
+        return null;
+      });
   }
 };
 
 (function() {
-  var lastOnline = OllamaService.online;
+  var lastOnline = GeminiService.online;
 
   function emitAIStatus() {
-    CONFIG.EVENT_BUS.emit(CONFIG.EVENTS.AI_STATUS, OllamaService.online);
+    CONFIG.EVENT_BUS.emit(CONFIG.EVENTS.AI_STATUS, GeminiService.online);
   }
 
   function refreshAIStatus() {
-    return OllamaService.healthCheck()
+    return GeminiService.healthCheck()
       .then(function(online) {
         if (online !== lastOnline) {
           lastOnline = online;
@@ -451,11 +450,11 @@ var OllamaService = {
   var game = new Phaser.Game(phaserConfig);
 
   refreshAIStatus();
-  window.setInterval(refreshAIStatus, CONFIG.TIMERS.OLLAMA_HEALTH_MS);
+  window.setInterval(refreshAIStatus, CONFIG.TIMERS.AI_HEALTH_MS);
 
   window.LLMPetRPG = {
     CONFIG: CONFIG,
     game: game,
-    OllamaService: OllamaService
+    GeminiService: GeminiService
   };
 })();

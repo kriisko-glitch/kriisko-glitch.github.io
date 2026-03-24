@@ -199,7 +199,7 @@
     this.sceneAlive = true;
 
     CONFIG.EVENT_BUS.emit(CONFIG.EVENTS.HUD_SHOW);
-    CONFIG.EVENT_BUS.emit(CONFIG.EVENTS.AI_STATUS, !!OllamaService.online);
+    CONFIG.EVENT_BUS.emit(CONFIG.EVENTS.AI_STATUS, !!GeminiService.online);
 
     this.cameras.main.setBackgroundColor(CONFIG.COLORS.BG_DARK);
 
@@ -396,6 +396,10 @@
     this.pet.body.setSize(20, 24);
     this.pet.setScale(this.petScaleBase);
     this.pet.setPipeline('Light2D');
+    this.pet.setInteractive({ useHandCursor: true });
+    this.pet.on('pointerdown', function() {
+      CONFIG.EVENT_BUS.emit(CONFIG.EVENTS.CHAT_FOCUS);
+    });
 
     this.tweens.add({
       targets: this.pet,
@@ -1438,8 +1442,8 @@
     }
 
     var mode = this.getBrainMode(this.petLevel);
-    if (mode === CONFIG.BRAIN.MODE_SCRIPTED || !OllamaService.online) {
-      this.runScriptedBrain(!OllamaService.online);
+    if (mode === CONFIG.BRAIN.MODE_SCRIPTED || !GeminiService.online) {
+      this.runScriptedBrain(!GeminiService.online);
       return;
     }
 
@@ -1507,7 +1511,7 @@
     this.brainRequestPending = true;
     this.startThinking();
 
-    OllamaService.chat(promptData.systemPrompt, JSON.stringify(snapshot), promptData.maxTokens)
+    GeminiService.chat(promptData.systemPrompt, JSON.stringify(snapshot), promptData.maxTokens)
       .then(function(response) {
         if (!self.sceneAlive) {
           return;
@@ -1517,6 +1521,7 @@
 
         if (!response || !response.action) {
           CONFIG.EVENT_BUS.emit(CONFIG.EVENTS.AI_STATUS, false);
+          self.showPetSpeech('\u2728 *' + self.petName + ' seems distracted by a magical butterfly...*', true);
           self.runScriptedBrain(true);
           self.lastPlayerMessage = '';
           return;
@@ -1548,6 +1553,7 @@
         self.brainRequestPending = false;
         self.stopThinking();
         CONFIG.EVENT_BUS.emit(CONFIG.EVENTS.AI_STATUS, false);
+        self.showPetSpeech('\u2728 *' + self.petName + ' seems distracted by a magical butterfly...*', true);
         self.runScriptedBrain(true);
         self.lastPlayerMessage = '';
       });
@@ -1629,10 +1635,25 @@
   GameScene.prototype.startThinking = function() {
     this.thinkingActive = true;
     this.nextThinkBurstAt = this.time.now;
+    if (this.petSpeechText) {
+      if (this.speechHideTimer) {
+        this.speechHideTimer.remove(false);
+        this.speechHideTimer = null;
+      }
+      this.tweens.killTweensOf(this.petSpeechText);
+      this.petSpeechText.setText('\u2728 thinking...');
+      this.petSpeechText.setPosition(this.pet.x, this.pet.y - SCENE.SPEECH_OFFSET_Y);
+      this.petSpeechText.setVisible(true);
+      this.petSpeechText.setAlpha(1);
+    }
   };
 
   GameScene.prototype.stopThinking = function() {
     this.thinkingActive = false;
+    if (this.petSpeechText && this.petSpeechText.text === '\u2728 thinking...') {
+      this.petSpeechText.setVisible(false);
+      this.petSpeechText.setAlpha(0);
+    }
   };
 
   GameScene.prototype.trimWords = function(text, maxWords) {
@@ -1814,7 +1835,7 @@
 
     CONFIG.EVENT_BUS.emit(CONFIG.EVENTS.PET_LEVELUP, { name: this.petName, level: newLevel });
 
-    if (OllamaService.online && newLevel >= 4) {
+    if (GeminiService.online && newLevel >= 4) {
       this.requestLevelUpMessage(newLevel);
     } else {
       this.showPetSpeech('*happy bounce*', true);
@@ -1833,7 +1854,7 @@
       floor: this.floor
     });
 
-    OllamaService.chat(systemPrompt, userMessage, CONFIG.BRAIN.MAX_TOKENS_SMART)
+    GeminiService.chat(systemPrompt, userMessage, CONFIG.BRAIN.MAX_TOKENS_SMART)
       .then(function(response) {
         if (!self.sceneAlive) {
           return;
