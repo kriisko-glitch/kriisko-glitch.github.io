@@ -31,10 +31,12 @@
     }
 
     #game-root {
-      width: 100%;
-      height: 100%;
-      display: grid;
-      place-items: center;
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
     }
 
     canvas {
@@ -387,9 +389,9 @@ class BootScene extends Phaser.Scene {
       ease: 'Sine.easeInOut',
     });
 
-    this.time.delayedCall(C.BOOT.DURATION_MS, () => {
-      this.scene.start('GameScene');
-    });
+    // Use window.setTimeout (not Phaser delayedCall) so it fires even when
+    // the tab is throttled to 1-2 FPS by Chrome background tab policy
+    window.setTimeout(() => { this.scene.start('GameScene'); }, C.BOOT.DURATION_MS);
   }
 
   update() {}
