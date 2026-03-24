@@ -159,6 +159,13 @@
       }
     }
 
+    @media (pointer: coarse) {
+      #chat-input-overlay,
+      #mobile-talk-btn {
+        display: none !important;
+      }
+    }
+
     #mobile-talk-btn {
       display: none;
       position: absolute;
@@ -216,6 +223,31 @@
       <input id="chat-input" type="text" maxlength="140" placeholder="Type to your companion..." autocomplete="off" spellcheck="false" />
     </div>
     <button id="mobile-talk-btn" aria-label="Talk to companion">&#x1F4AC; Talk</button>
+    <div id="pet-commands" style="
+      position: fixed;
+      top: 8px;
+      right: 8px;
+      z-index: 500;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    ">
+      <button id="cmd-follow" style="
+        width: 64px; height: 40px; background: rgba(0,80,160,0.85);
+        border: 2px solid #4af; color: #fff; font-size: 12px;
+        border-radius: 8px; cursor: pointer; touch-action: manipulation;
+      ">&#128062; Follow</button>
+      <button id="cmd-attack" style="
+        width: 64px; height: 40px; background: rgba(160,0,0,0.85);
+        border: 2px solid #f44; color: #fff; font-size: 12px;
+        border-radius: 8px; cursor: pointer; touch-action: manipulation;
+      ">&#9876;&#65039; Attack</button>
+      <button id="cmd-wait" style="
+        width: 64px; height: 40px; background: rgba(0,100,0,0.85);
+        border: 2px solid #4f4; color: #fff; font-size: 12px;
+        border-radius: 8px; cursor: pointer; touch-action: manipulation;
+      ">&#128721; Wait</button>
+    </div>
   </div>
 
   <script>window.GEMINI_API_KEY = 'AIzaSyCcB7qv7ToYYIoa8BcgPLBT5AyJVtBv2fs';</script>

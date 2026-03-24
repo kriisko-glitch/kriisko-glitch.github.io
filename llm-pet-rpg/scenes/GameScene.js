@@ -228,6 +228,32 @@
     this.events.once('shutdown', this.shutdown, this);
     var scene = this;
     this.moveDir = { x: 0, y: 0 };
+    function sendPetCommand(text) {
+      scene.lastPlayerMessage = text;
+      scene.runLLMBrain('command');
+    }
+
+    var cmdFollow = document.getElementById('cmd-follow');
+    var cmdAttack = document.getElementById('cmd-attack');
+    var cmdWait = document.getElementById('cmd-wait');
+
+    function bindCommandButton(el, text) {
+      if (!el) {
+        return;
+      }
+      el.onclick = function() {
+        sendPetCommand(text);
+      };
+      el.ontouchend = function(e) {
+        e.preventDefault();
+        sendPetCommand(text);
+      };
+    }
+
+    bindCommandButton(cmdFollow, 'follow me');
+    bindCommandButton(cmdAttack, 'attack the nearest enemy');
+    bindCommandButton(cmdWait, 'wait here and stay');
+
     window.__gameAPI = {
       moveLeft: function() { scene.moveDir.x = -1; },
       moveRight: function() { scene.moveDir.x = 1; },
@@ -235,7 +261,10 @@
       moveDown: function() { scene.moveDir.y = 1; },
       stopX: function() { scene.moveDir.x = 0; },
       stopY: function() { scene.moveDir.y = 0; },
-      attack: function() { scene.playerAttack(); scene.petAttackNearby(); }
+      attack: function() { scene.playerAttack(); scene.petAttackNearby(); },
+      petFollow: function() { sendPetCommand('follow me'); },
+      petAttack: function() { sendPetCommand('attack nearest'); },
+      petWait: function() { sendPetCommand('wait here'); }
     };
     this.events.once('destroy', this.shutdown, this);
   };

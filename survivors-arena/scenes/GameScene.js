@@ -949,6 +949,7 @@
   GameScene.prototype.updateGems = function (delta) {
     this.gemSparkleAccumulator += delta;
     var scene = this;
+    var physicsActive = !scene.physics.world.isPaused;
 
     this.xpGems.children.each(function (gem) {
       if (!gem.active) {
@@ -960,7 +961,9 @@
         gem.setData("magnetized", true);
       }
 
-      if (dist < 80 && !gem.getData("magnetized")) {
+      if (!physicsActive) {
+        gem.setVelocity(0, 0);
+      } else if (dist < 80 && !gem.getData("magnetized")) {
         scene.physics.moveToObject(gem, scene.player, 150);
       } else if (gem.getData("magnetized")) {
         var normalized = 1 - Phaser.Math.Clamp(dist / scene.magnetRadius, 0, 1);
@@ -1250,13 +1253,25 @@
 
     this.shieldEmitter.explode(16, this.player.x, this.player.y);
     this.playLevelUpSound();
-
-    this.showLevelUpOverlay();
+    try {
+      this.showLevelUpOverlay();
+    } catch (e) {
+      console.error("Level up overlay error:", e);
+      this.isLevelingUp = false;
+      this.physics.world.resume();
+    }
   };
 
   GameScene.prototype.showLevelUpOverlay = function () {
     if (this.levelUpOverlay) {
       this.levelUpOverlay.destroy(true);
+      this.levelUpOverlay = null;
+    }
+
+    var upgrades = this.rollUpgradeChoices ? this.rollUpgradeChoices() : [];
+    if (!upgrades || upgrades.length === 0) {
+      this.closeLevelUpOverlay();
+      return;
     }
 
     var camera = this.cameras.main;
@@ -1283,7 +1298,6 @@
 
     overlay.add([dim, title, subtitle]);
 
-    var upgrades = this.rollUpgradeChoices();
     var i;
     for (i = 0; i < upgrades.length; i += 1) {
       var cardX = (i - 1) * this.cfg.LEVEL_UP.CARD_SPACING;

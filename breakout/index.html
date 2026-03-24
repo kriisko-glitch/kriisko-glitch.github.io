@@ -76,9 +76,13 @@
       <canvas id="game-canvas" width="480" height="600"></canvas>
     </div>
   </main>
-  <script>
+<script>
 (function() {
-var leaderboardActive = false;
+
+function isLeaderboardVisible() {
+  return !!document.getElementById('klb-initials-overlay') ||
+         !!document.getElementById('klb-show-overlay');
+}
 
 // CONSTANTS
 const CANVAS_WIDTH = 480;
@@ -196,9 +200,9 @@ window.addEventListener("keydown", (event) => {
   } else if (event.code === KEY_SPACE) {
     event.preventDefault();
     if (game.state === GAME_STATES.IDLE) {
-      startPlayFromIdle();
+      if (!isLeaderboardVisible()) startPlayFromIdle();
     } else if (game.state === GAME_STATES.DEAD) {
-      if (leaderboardActive) return;
+      if (isLeaderboardVisible()) return;
       restartGame();
     } else if (game.state === GAME_STATES.PLAYING) {
       const now = performance.now();
@@ -229,9 +233,9 @@ const updatePointer = (clientX) => {
 canvas.addEventListener("mousemove", (event) => updatePointer(event.clientX));
 canvas.addEventListener("mousedown", (event) => {
   updatePointer(event.clientX);
-  if (game.state === GAME_STATES.IDLE) startPlayFromIdle();
+  if (game.state === GAME_STATES.IDLE && !isLeaderboardVisible()) startPlayFromIdle();
   if (game.state === GAME_STATES.DEAD) {
-    if (leaderboardActive) return;
+    if (isLeaderboardVisible()) return;
     restartGame();
   }
 });
@@ -240,9 +244,9 @@ canvas.addEventListener("touchstart", (event) => {
   const touch = event.touches[0];
   if (!touch) return;
   updatePointer(touch.clientX);
-  if (game.state === GAME_STATES.IDLE) startPlayFromIdle();
+  if (game.state === GAME_STATES.IDLE && !isLeaderboardVisible()) startPlayFromIdle();
   if (game.state === GAME_STATES.DEAD) {
-    if (leaderboardActive) return;
+    if (isLeaderboardVisible()) return;
     restartGame();
   }
 }, { passive: true });
@@ -563,19 +567,12 @@ function updateBalls(dt) {
     return;
   }
 
-  if (game.balls.length === 0 && game.state !== GAME_STATES.DEAD && !leaderboardActive) {
+  if (game.balls.length === 0 && game.state === GAME_STATES.PLAYING && !isLeaderboardVisible()) {
     game.state = GAME_STATES.DEAD;
     if (window.KriiskoLeaderboard && window.KriiskoLeaderboard.qualifies('breakout', game.score)) {
-      leaderboardActive = true;
       window.KriiskoLeaderboard.promptInitials('breakout', game.score, function(initials) {
         if (initials) window.KriiskoLeaderboard.submit('breakout', game.score, initials);
         window.KriiskoLeaderboard.show('breakout');
-        var pollId = setInterval(function() {
-          if (!document.getElementById('klb-show-overlay')) {
-            leaderboardActive = false;
-            clearInterval(pollId);
-          }
-        }, 200);
       });
     }
   }

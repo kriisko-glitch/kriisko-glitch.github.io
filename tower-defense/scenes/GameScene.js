@@ -668,7 +668,7 @@ export default class GameScene extends Phaser.Scene {
     let nearestDist = Infinity;
     for (let index = 0; index < this.towers.length; index += 1) {
       const tower = this.towers[index];
-      if (!tower.sprite.active) {
+      if (tower.isWall || !tower.sprite || !tower.sprite.active) {
         continue;
       }
 
@@ -723,7 +723,8 @@ export default class GameScene extends Phaser.Scene {
       }
 
       const tower = projectile.targetTower;
-      if (!tower || !tower.sprite.active) {
+      const towerIndex = this.towers.indexOf(tower);
+      if (!tower || towerIndex === -1 || !tower.sprite || !tower.sprite.active) {
         projectile.destroy();
         continue;
       }
