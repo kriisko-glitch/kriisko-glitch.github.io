@@ -16,6 +16,7 @@ export default class GameScene extends Phaser.Scene {
     this.towers = [];
     this.enemies = this.add.group();
     this.projectiles = this.add.group();
+    this.enemyProjectiles = this.add.group();
     this.isRunning = true;
 
     this.audioContext = null;
@@ -57,6 +58,8 @@ export default class GameScene extends Phaser.Scene {
     this.updateEnemies(time, deltaSeconds);
     this.updateTowers(time);
     this.updateProjectiles(deltaSeconds);
+    this.updateEnemyShooting(time);
+    this.updateEnemyProjectiles(deltaSeconds);
     this.checkWaveCompletion(time);
   }
 
@@ -439,6 +442,8 @@ export default class GameScene extends Phaser.Scene {
     container.hpBarFill = hpBarFill;
     container.hpBarWidth = hpBarWidth;
     container.isDead = false;
+    container.shootCooldown = 2000 + Phaser.Math.Between(-500, 500);
+    container.nextShootAt = this.time.now + container.shootCooldown;
 
     this.enemies.add(container);
   }
@@ -640,6 +645,109 @@ export default class GameScene extends Phaser.Scene {
 
     this.projectiles.add(projectile);
     this.playShootSound(tower.type);
+  }
+
+  findNearestTowerInRange(enemy, maxRange) {
+    let nearest = null;
+    let nearestDist = Infinity;
+    for (let index = 0; index < this.towers.length; index += 1) {
+      const tower = this.towers[index];
+      if (!tower.sprite.active) {
+        continue;
+      }
+
+      const dist = Phaser.Math.Distance.Between(enemy.x, enemy.y, tower.x, tower.y);
+      if (dist <= maxRange && dist < nearestDist) {
+        nearestDist = dist;
+        nearest = tower;
+      }
+    }
+
+    return nearest;
+  }
+
+  updateEnemyShooting(time) {
+    const enemies = this.enemies.getChildren();
+    const shootRange = 200;
+
+    for (let index = 0; index < enemies.length; index += 1) {
+      const enemy = enemies[index];
+      if (!enemy.active || enemy.isDead) {
+        continue;
+      }
+
+      if (time < enemy.nextShootAt) {
+        continue;
+      }
+
+      const tower = this.findNearestTowerInRange(enemy, shootRange);
+      if (!tower) {
+        enemy.nextShootAt = time + enemy.shootCooldown;
+        continue;
+      }
+
+      const projectile = this.add.circle(enemy.x, enemy.y, 4, 0xff0000, 1);
+      projectile.setDepth(this.cfg.DEPTH.PROJECTILE);
+      projectile.targetTower = tower;
+      projectile.speed = 150;
+      projectile.startX = enemy.x;
+      projectile.startY = enemy.y;
+
+      this.enemyProjectiles.add(projectile);
+      enemy.nextShootAt = time + enemy.shootCooldown;
+    }
+  }
+
+  updateEnemyProjectiles(deltaSeconds) {
+    const projectiles = this.enemyProjectiles.getChildren();
+    for (let index = 0; index < projectiles.length; index += 1) {
+      const projectile = projectiles[index];
+      if (!projectile.active) {
+        continue;
+      }
+
+      const tower = projectile.targetTower;
+      if (!tower || !tower.sprite.active) {
+        projectile.destroy();
+        continue;
+      }
+
+      const distToTarget = Phaser.Math.Distance.Between(
+        projectile.x,
+        projectile.y,
+        tower.x,
+        tower.y
+      );
+
+      if (distToTarget <= 10) {
+        tower.hp -= 1;
+        this.updateTowerHpIndicator(tower);
+        if (tower.hp <= 0) {
+          const towerIndex = this.towers.indexOf(tower);
+          if (towerIndex >= 0) {
+            this.destroyTower(tower, towerIndex);
+          }
+        }
+        projectile.destroy();
+        continue;
+      }
+
+      const stepDistance = projectile.speed * deltaSeconds;
+      const moveStep = Math.min(stepDistance, distToTarget - 10);
+      const angle = Phaser.Math.Angle.Between(projectile.x, projectile.y, tower.x, tower.y);
+      projectile.x += Math.cos(angle) * moveStep;
+      projectile.y += Math.sin(angle) * moveStep;
+
+      const traveled = Phaser.Math.Distance.Between(
+        projectile.x,
+        projectile.y,
+        projectile.startX,
+        projectile.startY
+      );
+      if (traveled > 400) {
+        projectile.destroy();
+      }
+    }
   }
 
   updateProjectiles(deltaSeconds) {

@@ -265,8 +265,8 @@ class GameScene extends Phaser.Scene {
   }
 
   createGroups() {
-    this.playerBullets = this.physics.add.group();
-    this.enemyBullets = this.physics.add.group();
+    this.playerBullets = this.physics.add.group({ runChildUpdate: true });
+    this.enemyBullets = this.physics.add.group({ runChildUpdate: true });
     this.enemies = this.physics.add.group();
     this.powerups = this.physics.add.group();
   }
@@ -629,6 +629,7 @@ class GameScene extends Phaser.Scene {
     this.physics.add.existing(bullet);
     bullet.body.setAllowGravity(false);
     bullet.body.setSize(3, 12, true);
+    bullet.body.reset(x, y);
     this.playerBullets.add(bullet);
     bullet.body.setVelocity(vx, vy);
     return bullet;
@@ -648,6 +649,7 @@ class GameScene extends Phaser.Scene {
     this.physics.add.existing(bullet);
     bullet.body.setAllowGravity(false);
     bullet.body.setSize(isBossBullet ? 10 : 3, 10, true);
+    bullet.body.reset(x, y);
     this.enemyBullets.add(bullet);
     bullet.body.setVelocity(vx, vy);
     return bullet;

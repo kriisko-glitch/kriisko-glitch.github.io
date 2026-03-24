@@ -190,14 +190,19 @@
       b.style.fontSize = '18px';
     });
 
-    function bindBtnMulti(btn, pairs) {
+    function bindDpadBtn(btn, apiStart, apiStop, keyPairs) {
       var active = false;
       btn.addEventListener('touchstart', function (e) {
         e.preventDefault();
         if (!active) {
           active = true;
           btn.classList.add('held');
-          pairs.forEach(function (p) { dispatchDown(p[0], p[1]); });
+          var api = window.__gameAPI;
+          if (api && typeof api[apiStart] === 'function') {
+            api[apiStart]();
+          } else {
+            keyPairs.forEach(function (p) { dispatchDown(p[0], p[1]); });
+          }
         }
       }, { passive: false });
       btn.addEventListener('touchend', function (e) {
@@ -205,35 +210,106 @@
         if (active) {
           active = false;
           btn.classList.remove('held');
-          pairs.forEach(function (p) { dispatchUp(p[0], p[1]); });
+          var api = window.__gameAPI;
+          if (api && typeof api[apiStop] === 'function') {
+            api[apiStop]();
+          } else {
+            keyPairs.forEach(function (p) { dispatchUp(p[0], p[1]); });
+          }
         }
       }, { passive: false });
       btn.addEventListener('touchcancel', function () {
         if (active) {
           active = false;
           btn.classList.remove('held');
-          pairs.forEach(function (p) { dispatchUp(p[0], p[1]); });
+          var api = window.__gameAPI;
+          if (api && typeof api[apiStop] === 'function') {
+            api[apiStop]();
+          } else {
+            keyPairs.forEach(function (p) { dispatchUp(p[0], p[1]); });
+          }
         }
       });
     }
 
-    bindBtnMulti(up,    [['ArrowUp', 'ArrowUp'], ['KeyW', 'w']]);
-    bindBtnMulti(down,  [['ArrowDown', 'ArrowDown'], ['KeyS', 's']]);
-    bindBtnMulti(left,  [['ArrowLeft', 'ArrowLeft'], ['KeyA', 'a']]);
-    bindBtnMulti(right, [['ArrowRight', 'ArrowRight'], ['KeyD', 'd']]);
+    bindDpadBtn(up,    'moveUp',    'stopY', [['ArrowUp', 'ArrowUp'], ['KeyW', 'w']]);
+    bindDpadBtn(down,  'moveDown',  'stopY', [['ArrowDown', 'ArrowDown'], ['KeyS', 's']]);
+    bindDpadBtn(left,  'moveLeft',  'stopX', [['ArrowLeft', 'ArrowLeft'], ['KeyA', 'a']]);
+    bindDpadBtn(right, 'moveRight', 'stopX', [['ArrowRight', 'ArrowRight'], ['KeyD', 'd']]);
 
     var actionBtn = addBtn(overlay, '\u26A1', dBaseB, undefined, 16);
     actionBtn.style.width = '70px';
     actionBtn.style.height = '70px';
     actionBtn.style.borderRadius = '50%';
     actionBtn.style.fontSize = '28px';
-    bindBtn(actionBtn, 'Space', ' ');
+    (function () {
+      var active = false;
+      actionBtn.addEventListener('touchstart', function (e) {
+        e.preventDefault();
+        if (!active) {
+          active = true;
+          actionBtn.classList.add('held');
+          var api = window.__gameAPI;
+          if (api && typeof api.attack === 'function') api.attack();
+          else if (api && typeof api.fire === 'function') api.fire();
+          else dispatchDown('Space', ' ');
+        }
+      }, { passive: false });
+      actionBtn.addEventListener('touchend', function (e) {
+        e.preventDefault();
+        if (active) {
+          active = false;
+          actionBtn.classList.remove('held');
+          var api = window.__gameAPI;
+          if (!api || (typeof api.attack !== 'function' && typeof api.fire !== 'function'))
+            dispatchUp('Space', ' ');
+        }
+      }, { passive: false });
+      actionBtn.addEventListener('touchcancel', function () {
+        if (active) {
+          active = false;
+          actionBtn.classList.remove('held');
+          var api = window.__gameAPI;
+          if (!api || (typeof api.attack !== 'function' && typeof api.fire !== 'function'))
+            dispatchUp('Space', ' ');
+        }
+      });
+    })();
 
     var action2 = addBtn(overlay, 'X', dBaseB + 70 + dGap, undefined, 16);
     action2.style.width = '56px';
     action2.style.height = '44px';
     action2.style.fontSize = '16px';
-    bindBtn(action2, 'KeyX', 'x');
+    (function () {
+      var active = false;
+      action2.addEventListener('touchstart', function (e) {
+        e.preventDefault();
+        if (!active) {
+          active = true;
+          action2.classList.add('held');
+          var api = window.__gameAPI;
+          if (api && typeof api.attack === 'function') api.attack();
+          else dispatchDown('KeyX', 'x');
+        }
+      }, { passive: false });
+      action2.addEventListener('touchend', function (e) {
+        e.preventDefault();
+        if (active) {
+          active = false;
+          action2.classList.remove('held');
+          var api = window.__gameAPI;
+          if (!api || typeof api.attack !== 'function') dispatchUp('KeyX', 'x');
+        }
+      }, { passive: false });
+      action2.addEventListener('touchcancel', function () {
+        if (active) {
+          active = false;
+          action2.classList.remove('held');
+          var api = window.__gameAPI;
+          if (!api || typeof api.attack !== 'function') dispatchUp('KeyX', 'x');
+        }
+      });
+    })();
 
     return;
   }
@@ -264,18 +340,59 @@
     fireBtn.style.height = '80px';
     fireBtn.style.borderRadius = '50%';
     fireBtn.style.fontSize = '30px';
-    bindBtn(fireBtn, 'Space', ' ');
+    (function () {
+      var active = false;
+      fireBtn.addEventListener('touchstart', function (e) {
+        e.preventDefault();
+        if (!active) {
+          active = true;
+          fireBtn.classList.add('held');
+          var api = window.__gameAPI;
+          if (api && typeof api.fire === 'function') api.fire();
+          else if (api && typeof api.attack === 'function') api.attack();
+          else dispatchDown('Space', ' ');
+        }
+      }, { passive: false });
+      fireBtn.addEventListener('touchend', function (e) {
+        e.preventDefault();
+        if (active) {
+          active = false;
+          fireBtn.classList.remove('held');
+          var api = window.__gameAPI;
+          if (!api || (typeof api.fire !== 'function' && typeof api.attack !== 'function'))
+            dispatchUp('Space', ' ');
+        }
+      }, { passive: false });
+      fireBtn.addEventListener('touchcancel', function () {
+        if (active) {
+          active = false;
+          fireBtn.classList.remove('held');
+          var api = window.__gameAPI;
+          if (!api || (typeof api.fire !== 'function' && typeof api.attack !== 'function'))
+            dispatchUp('Space', ' ');
+        }
+      });
+    })();
 
     var jActive = false;
     var held = { w: false, a: false, s: false, d: false };
     var DEAD_ZONE = 0.25;
 
+    var apiDirMap = { w: 'moveUp', a: 'moveLeft', s: 'moveDown', d: 'moveRight' };
+    var apiStopMap = { w: 'stopY', a: 'stopX', s: 'stopY', d: 'stopX' };
+
     function setKey(k, state) {
       var map = { w: ['KeyW','w'], a: ['KeyA','a'], s: ['KeyS','s'], d: ['KeyD','d'] };
       if (held[k] === state) return;
       held[k] = state;
-      if (state) dispatchDown(map[k][0], map[k][1]);
-      else       dispatchUp(map[k][0], map[k][1]);
+      var api = window.__gameAPI;
+      if (api && typeof api[apiDirMap[k]] === 'function') {
+        if (state) api[apiDirMap[k]]();
+        else api[apiStopMap[k]]();
+      } else {
+        if (state) dispatchDown(map[k][0], map[k][1]);
+        else       dispatchUp(map[k][0], map[k][1]);
+      }
     }
 
     function releaseAll() {

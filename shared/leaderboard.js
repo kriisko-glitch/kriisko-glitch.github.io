@@ -6,6 +6,48 @@
   var STORAGE_PREFIX = 'kriisko_lb_';
   var Z_INDEX = 10000;
 
+  // ── Supabase global leaderboard ──────────────────────────────────
+  var SB_URL = 'https://vycyeyspgababxvuphjd.supabase.co';
+  var SB_KEY = 'sb_publishable_bO0yY-dxoMPs1N3IIPUOog_P5XdxoyW';
+
+  function sbHeaders() {
+    return {
+      'apikey': SB_KEY,
+      'Authorization': 'Bearer ' + SB_KEY,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=minimal'
+    };
+  }
+
+  function sbSubmit(gameName, score, initials, dateStr) {
+    try {
+      fetch(SB_URL + '/rest/v1/scores', {
+        method: 'POST',
+        headers: sbHeaders(),
+        body: JSON.stringify({ game: gameName, initials: initials, score: score, date: dateStr })
+      }).catch(function () {});
+    } catch (_) {}
+  }
+
+  function sbGetTop10(gameName, cb) {
+    try {
+      fetch(SB_URL + '/rest/v1/scores?game=eq.' + encodeURIComponent(gameName) +
+        '&order=score.desc&limit=10&select=initials,score,date', {
+        headers: {
+          'apikey': SB_KEY,
+          'Authorization': 'Bearer ' + SB_KEY
+        }
+      }).then(function (r) {
+        if (!r.ok) { cb(null); return; }
+        return r.json();
+      }).then(function (data) {
+        if (Array.isArray(data)) cb(data);
+        else cb(null);
+      }).catch(function () { cb(null); });
+    } catch (_) { cb(null); }
+  }
+  // ─────────────────────────────────────────────────────────────────
+
   function storageKey(gameName) {
     return STORAGE_PREFIX + gameName;
   }
@@ -42,15 +84,18 @@
     if (typeof score !== 'number' || score <= 0) return;
     var clean = String(initials || 'AAA').toUpperCase().replace(/[^A-Z0-9 ]/g, '').substring(0, 3);
     while (clean.length < 3) clean += ' ';
-    var board = getTop10(gameName);
     var today = new Date();
     var dateStr = today.getFullYear() + '-' +
       String(today.getMonth() + 1).padStart(2, '0') + '-' +
       String(today.getDate()).padStart(2, '0');
+    // Save to localStorage
+    var board = getTop10(gameName);
     board.push({ initials: clean, score: score, date: dateStr });
     board.sort(function (a, b) { return b.score - a.score; });
     board = board.slice(0, MAX_ENTRIES);
     saveBoard(gameName, board);
+    // Submit to Supabase (background, fire-and-forget)
+    sbSubmit(gameName, score, clean, dateStr);
   }
 
   function removeOverlay(el) {
@@ -283,7 +328,6 @@
   // ── Leaderboard Display UI ────────────────────────────────────────
 
   function show(gameName) {
-    var board = getTop10(gameName);
     var overlay = document.createElement('div');
     overlay.id = 'klb-show-overlay';
     overlay.style.cssText =
@@ -292,72 +336,79 @@
 
     var box = document.createElement('div');
     box.style.cssText = 'text-align:center;padding:32px;max-width:520px;width:95%;';
-
-    var title = document.createElement('div');
-    title.textContent = prettifyGameName(gameName) + ' HIGH SCORES';
-    title.style.cssText =
-      'font-size:24px;color:#0ff;margin-bottom:24px;font-weight:bold;text-shadow:0 0 12px #0ff,0 0 24px rgba(0,255,255,0.3);' +
-      'letter-spacing:2px;';
-
-    var table = document.createElement('table');
-    table.style.cssText = 'width:100%;border-collapse:collapse;margin-bottom:24px;';
-
-    var thead = document.createElement('tr');
-    ['RANK', 'NAME', 'SCORE', 'DATE'].forEach(function (h) {
-      var th = document.createElement('th');
-      th.textContent = h;
-      th.style.cssText = 'padding:8px 4px;color:#888;font-size:12px;border-bottom:1px solid #333;text-align:center;';
-      thead.appendChild(th);
-    });
-    table.appendChild(thead);
+    overlay.appendChild(box);
 
     var RANK_COLORS = ['#ffd700', '#c0c0c0', '#cd7f32'];
 
-    if (board.length === 0) {
-      var emptyRow = document.createElement('tr');
-      var emptyCell = document.createElement('td');
-      emptyCell.colSpan = 4;
-      emptyCell.textContent = 'NO SCORES YET';
-      emptyCell.style.cssText = 'padding:24px;color:#555;font-size:16px;text-align:center;';
-      emptyRow.appendChild(emptyCell);
-      table.appendChild(emptyRow);
-    } else {
-      for (var r = 0; r < board.length; r++) {
-        var row = document.createElement('tr');
-        var rankColor = r < 3 ? RANK_COLORS[r] : '#0ff';
+    function renderBoard(board, isLoading) {
+      box.innerHTML = '';
 
-        var tdRank = document.createElement('td');
-        tdRank.textContent = String(r + 1);
-        tdRank.style.cssText = 'padding:6px 4px;color:' + rankColor + ';font-size:18px;font-weight:bold;text-align:center;';
+      var sourceLabel = document.createElement('div');
+      sourceLabel.textContent = isLoading ? '[ LOCAL ]' : '[ GLOBAL ]';
+      sourceLabel.style.cssText = 'font-size:10px;color:#' + (isLoading ? '555' : '0a0') + ';margin-bottom:4px;letter-spacing:2px;';
+      box.appendChild(sourceLabel);
 
-        var tdName = document.createElement('td');
-        tdName.textContent = board[r].initials;
-        tdName.style.cssText = 'padding:6px 4px;color:' + rankColor + ';font-size:18px;letter-spacing:4px;text-align:center;';
+      var title = document.createElement('div');
+      title.textContent = prettifyGameName(gameName) + ' HIGH SCORES';
+      title.style.cssText =
+        'font-size:24px;color:#0ff;margin-bottom:24px;font-weight:bold;text-shadow:0 0 12px #0ff,0 0 24px rgba(0,255,255,0.3);' +
+        'letter-spacing:2px;';
+      box.appendChild(title);
 
-        var tdScore = document.createElement('td');
-        tdScore.textContent = String(board[r].score);
-        tdScore.style.cssText = 'padding:6px 4px;color:#fff;font-size:18px;text-align:center;';
+      var table = document.createElement('table');
+      table.style.cssText = 'width:100%;border-collapse:collapse;margin-bottom:24px;';
 
-        var tdDate = document.createElement('td');
-        tdDate.textContent = board[r].date || '';
-        tdDate.style.cssText = 'padding:6px 4px;color:#666;font-size:12px;text-align:center;';
+      var thead = document.createElement('tr');
+      ['RANK', 'NAME', 'SCORE', 'DATE'].forEach(function (h) {
+        var th = document.createElement('th');
+        th.textContent = h;
+        th.style.cssText = 'padding:8px 4px;color:#888;font-size:12px;border-bottom:1px solid #333;text-align:center;';
+        thead.appendChild(th);
+      });
+      table.appendChild(thead);
 
-        row.appendChild(tdRank);
-        row.appendChild(tdName);
-        row.appendChild(tdScore);
-        row.appendChild(tdDate);
-        table.appendChild(row);
+      if (board.length === 0) {
+        var emptyRow = document.createElement('tr');
+        var emptyCell = document.createElement('td');
+        emptyCell.colSpan = 4;
+        emptyCell.textContent = isLoading ? 'LOADING...' : 'NO SCORES YET';
+        emptyCell.style.cssText = 'padding:24px;color:#555;font-size:16px;text-align:center;';
+        emptyRow.appendChild(emptyCell);
+        table.appendChild(emptyRow);
+      } else {
+        for (var r = 0; r < board.length; r++) {
+          var row = document.createElement('tr');
+          var rankColor = r < 3 ? RANK_COLORS[r] : '#0ff';
+          var tdRank = document.createElement('td');
+          tdRank.textContent = String(r + 1);
+          tdRank.style.cssText = 'padding:6px 4px;color:' + rankColor + ';font-size:18px;font-weight:bold;text-align:center;';
+          var tdName = document.createElement('td');
+          tdName.textContent = board[r].initials;
+          tdName.style.cssText = 'padding:6px 4px;color:' + rankColor + ';font-size:18px;letter-spacing:4px;text-align:center;';
+          var tdScore = document.createElement('td');
+          tdScore.textContent = String(board[r].score);
+          tdScore.style.cssText = 'padding:6px 4px;color:#fff;font-size:18px;text-align:center;';
+          var tdDate = document.createElement('td');
+          tdDate.textContent = board[r].date || '';
+          tdDate.style.cssText = 'padding:6px 4px;color:#666;font-size:12px;text-align:center;';
+          row.appendChild(tdRank);
+          row.appendChild(tdName);
+          row.appendChild(tdScore);
+          row.appendChild(tdDate);
+          table.appendChild(row);
+        }
       }
+      box.appendChild(table);
+
+      var prompt = document.createElement('div');
+      prompt.textContent = 'PRESS ANY KEY / TAP TO CONTINUE';
+      prompt.style.cssText = 'color:#0ff;font-size:14px;animation:klb-blink 1s step-end infinite;';
+      box.appendChild(prompt);
     }
 
-    var prompt = document.createElement('div');
-    prompt.textContent = 'PRESS ANY KEY / TAP TO CONTINUE';
-    prompt.style.cssText = 'color:#0ff;font-size:14px;animation:klb-blink 1s step-end infinite;';
-
-    box.appendChild(title);
-    box.appendChild(table);
-    box.appendChild(prompt);
-    overlay.appendChild(box);
+    // Render local board immediately
+    var localBoard = getTop10(gameName);
+    renderBoard(localBoard, true);
 
     addBlinkKeyframes();
     document.body.appendChild(overlay);
@@ -368,6 +419,22 @@
     }
     overlay.addEventListener('click', dismiss);
     document.addEventListener('keydown', dismiss);
+
+    // Fetch global board from Supabase and re-render
+    sbGetTop10(gameName, function (globalBoard) {
+      if (globalBoard && globalBoard.length > 0) {
+        // Merge local + global, dedupe by score+initials, keep top 10
+        var merged = globalBoard.slice();
+        localBoard.forEach(function (le) {
+          var exists = merged.some(function (ge) {
+            return ge.score === le.score && ge.initials === le.initials;
+          });
+          if (!exists) merged.push(le);
+        });
+        merged.sort(function (a, b) { return b.score - a.score; });
+        renderBoard(merged.slice(0, MAX_ENTRIES), false);
+      }
+    });
   }
 
   // ── Utility styles ────────────────────────────────────────────────

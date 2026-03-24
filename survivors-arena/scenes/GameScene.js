@@ -93,6 +93,20 @@
     this.createParticles();
     this.createCombat();
     this.createInput();
+
+    this.moveDir = { x: 0, y: 0 };
+
+    window.__gameAPI = {
+      moveLeft: function() { this.moveDir.x = -1; }.bind(this),
+      moveRight: function() { this.moveDir.x = 1; }.bind(this),
+      moveUp: function() { this.moveDir.y = -1; }.bind(this),
+      moveDown: function() { this.moveDir.y = 1; }.bind(this),
+      stopX: function() { this.moveDir.x = 0; }.bind(this),
+      stopY: function() { this.moveDir.y = 0; }.bind(this),
+      fire: function() { this.manualFire(); }.bind(this),
+      attack: function() { this.manualFire(); }.bind(this)
+    };
+
     this.createAudio();
 
     this.bus.on(this.cfg.EVENTS.AUDIO_TOGGLE_REQUEST, this.toggleAudio, this);
@@ -426,16 +440,16 @@
     var vx = 0;
     var vy = 0;
 
-    if (this.keys.left.isDown || this.cursors.left.isDown) {
+    if (this.keys.left.isDown || this.cursors.left.isDown || this.moveDir.x < 0) {
       vx -= 1;
     }
-    if (this.keys.right.isDown || this.cursors.right.isDown) {
+    if (this.keys.right.isDown || this.cursors.right.isDown || this.moveDir.x > 0) {
       vx += 1;
     }
-    if (this.keys.up.isDown || this.cursors.up.isDown) {
+    if (this.keys.up.isDown || this.cursors.up.isDown || this.moveDir.y < 0) {
       vy -= 1;
     }
-    if (this.keys.down.isDown || this.cursors.down.isDown) {
+    if (this.keys.down.isDown || this.cursors.down.isDown || this.moveDir.y > 0) {
       vy += 1;
     }
 
@@ -554,8 +568,8 @@
     enemy.setTexture(enemyType.key);
     enemy.setDepth(8);
     enemy.setData("typeName", enemyTypeName);
-    enemy.setData("hp", enemyType.hp);
-    enemy.setData("maxHp", enemyType.hp);
+    enemy.setData("hp", 1);
+    enemy.setData("maxHp", 1);
     enemy.setData("damage", enemyType.damage);
     enemy.setData("xp", enemyType.xp);
     enemy.setData("score", enemyType.score);
@@ -702,6 +716,32 @@
     if (this.weaponState.shield.owned && now >= this.weaponState.shield.nextFireAt) {
       this.fireShieldPulse();
       this.weaponState.shield.nextFireAt = now + this.getWeaponCooldown(this.cfg.WEAPONS.SHIELD.COOLDOWN_MS);
+    }
+  };
+
+  GameScene.prototype.manualFire = function () {
+    if (this.isGameOver || this.isLevelingUp) return;
+    var nearest = this.findNearestEnemy(this.player.x, this.player.y);
+    if (!nearest) return;
+    var baseAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, nearest.x, nearest.y);
+    var projectileTotal = this.projectileCount;
+    var spread = Phaser.Math.DegToRad(this.cfg.WEAPONS.PROJECTILE_SPREAD_DEG);
+    for (var i = 0; i < projectileTotal; i += 1) {
+      var projectile = this.projectiles.get(this.player.x, this.player.y, this.cfg.TEXTURES.ORB);
+      if (!projectile) continue;
+      var offsetIndex = i - (projectileTotal - 1) / 2;
+      var angle = baseAngle + spread * offsetIndex;
+      projectile.enableBody(true, this.player.x, this.player.y, true, true);
+      projectile.setTexture(this.cfg.TEXTURES.ORB);
+      projectile.setDepth(12);
+      projectile.setScale(1);
+      projectile.body.allowGravity = false;
+      projectile.setData("damage", Math.round(this.cfg.WEAPONS.ORB.DAMAGE * this.damageMultiplier));
+      projectile.setData("expiresAt", this.time.now + this.cfg.WEAPONS.ORB.LIFETIME_MS);
+      projectile.setData("trailAt", this.time.now);
+      projectile.body.velocity.x = Math.cos(angle) * this.cfg.WEAPONS.ORB.SPEED;
+      projectile.body.velocity.y = Math.sin(angle) * this.cfg.WEAPONS.ORB.SPEED;
+      projectile.rotation = angle;
     }
   };
 
@@ -971,7 +1011,7 @@
       return;
     }
 
-    var damage = enemy.getData("damage") || 1;
+    var damage = Math.max(1, Math.floor((enemy.getData("damage") || 1) * 0.5));
     this.damagePlayer(damage);
 
     if (this.cfg.ENEMIES.CONTACT_KILL) {
@@ -1431,6 +1471,8 @@
   };
 
   GameScene.prototype.onShutdown = function () {
+    window.__gameAPI = null;
+
     if (this.bus) {
       this.bus.off(this.cfg.EVENTS.AUDIO_TOGGLE_REQUEST, this.toggleAudio, this);
       this.bus.off(this.cfg.EVENTS.HUD_CLICK_CONSUMED, this.onHudClickConsumed, this);

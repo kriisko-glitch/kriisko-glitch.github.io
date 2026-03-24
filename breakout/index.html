@@ -131,6 +131,12 @@ const POWERUP_SIZE = { w: 22, h: 14 };
 const POWERUP_FALL_SPEED = 180;
 const WIDE_PADDLE_MULTIPLIER = 1.5;
 const WIDE_PADDLE_DURATION_MS = 10_000;
+const LASER_PADDLE_DURATION_MS = 10_000;
+const SLOW_BALL_DURATION_MS = 10_000;
+const SLOW_BALL_MULTIPLIER = 0.6;
+const BIG_BALL_DURATION_MS = 10_000;
+const BIG_BALL_RADIUS = BALL_RADIUS * 2;
+const LASER_FIRE_COOLDOWN_MS = 300;
 
 const KEY_LEFT = "ArrowLeft";
 const KEY_RIGHT = "ArrowRight";
@@ -164,9 +170,17 @@ const game = {
     x: (CANVAS_WIDTH - PADDLE_BASE_WIDTH) / 2,
     y: CANVAS_HEIGHT - PADDLE_Y_OFFSET,
     width: PADDLE_BASE_WIDTH,
-    height: PADDLE_HEIGHT
+    height: PADDLE_HEIGHT,
+    prevX: (CANVAS_WIDTH - PADDLE_BASE_WIDTH) / 2,
+    velocity: 0
   },
-  widePaddleUntil: 0
+  widePaddleUntil: 0,
+  laserPaddleUntil: 0,
+  slowBallUntil: 0,
+  bigBallUntil: 0,
+  activePowerup: null,
+  laserBullets: [],
+  lastLaserFireAt: 0
 };
 
 // INPUT
@@ -183,6 +197,16 @@ window.addEventListener("keydown", (event) => {
       startPlayFromIdle();
     } else if (game.state === GAME_STATES.DEAD) {
       restartGame();
+    } else if (game.state === GAME_STATES.PLAYING) {
+      const now = performance.now();
+      if (game.laserPaddleUntil > now && now - game.lastLaserFireAt >= LASER_FIRE_COOLDOWN_MS) {
+        game.lastLaserFireAt = now;
+        game.laserBullets.push({
+          x: game.paddle.x + game.paddle.width / 2,
+          y: game.paddle.y - 4,
+          vy: -500
+        });
+      }
     }
   }
 });
@@ -231,8 +255,12 @@ function buildBrickField() {
         col,
         x: BRICK_LEFT + col * (BRICK_WIDTH + BRICK_GAP),
         y: BRICK_TOP + row * (BRICK_HEIGHT + BRICK_GAP),
-        alive: true
+        alive: true,
+        isPowerBrick: false
       });
+      if (Math.random() < 0.2) {
+        game.bricks[game.bricks.length - 1].isPowerBrick = true;
+      }
       game.bricksLeft += 1;
     }
   }
@@ -288,6 +316,12 @@ function beginLevel(level) {
   buildBrickField();
   game.powerups = [];
   game.widePaddleUntil = 0;
+  game.laserPaddleUntil = 0;
+  game.slowBallUntil = 0;
+  game.bigBallUntil = 0;
+  game.activePowerup = null;
+  game.laserBullets = [];
+  game.lastLaserFireAt = 0;
   setPaddleWidth(PADDLE_BASE_WIDTH);
   game.paddle.x = (CANVAS_WIDTH - game.paddle.width) / 2;
   setIdleBall();
@@ -305,10 +339,13 @@ function restartGame() {
   beginLevel(1);
 }
 
-function spawnPowerup(brickX, brickY) {
-  if (game.level < POWERUP_SPAWN_LEVEL) return;
-  if (Math.random() > POWERUP_SPAWN_CHANCE) return;
-  const type = Math.random() < 0.5 ? "wide" : "multi";
+function spawnPowerup(brickX, brickY, forced) {
+  if (!forced) {
+    if (game.level < POWERUP_SPAWN_LEVEL) return;
+    if (Math.random() > POWERUP_SPAWN_CHANCE) return;
+  }
+  const TYPES = ["wide", "multi", "laser", "slow", "big"];
+  const type = TYPES[Math.floor(Math.random() * TYPES.length)];
   game.powerups.push({
     type,
     x: brickX + BRICK_WIDTH / 2 - POWERUP_SIZE.w / 2,
@@ -320,9 +357,12 @@ function spawnPowerup(brickX, brickY) {
 }
 
 function applyPowerup(type) {
+  const now = performance.now();
+
   if (type === "wide") {
     setPaddleWidth(PADDLE_BASE_WIDTH * WIDE_PADDLE_MULTIPLIER);
-    game.widePaddleUntil = performance.now() + WIDE_PADDLE_DURATION_MS;
+    game.widePaddleUntil = now + WIDE_PADDLE_DURATION_MS;
+    game.activePowerup = { name: "Wide Paddle", until: game.widePaddleUntil };
     return;
   }
 
@@ -335,14 +375,41 @@ function applyPowerup(type) {
     for (const offset of offsets) {
       if (game.balls.length >= BALL_MAX) break;
       const angle = baseAngle + offset;
+      const r = game.bigBallUntil > now ? BIG_BALL_RADIUS : BALL_RADIUS;
       game.balls.push({
         x: source.x,
         y: source.y,
         vx: Math.cos(angle) * baseSpeed,
         vy: -Math.sin(angle) * baseSpeed,
-        radius: BALL_RADIUS
+        radius: r
       });
     }
+    game.activePowerup = { name: "Multi Ball", until: now + 5000 };
+    return;
+  }
+
+  if (type === "laser") {
+    game.laserPaddleUntil = now + LASER_PADDLE_DURATION_MS;
+    game.activePowerup = { name: "Laser Paddle", until: game.laserPaddleUntil };
+    return;
+  }
+
+  if (type === "slow") {
+    game.slowBallUntil = now + SLOW_BALL_DURATION_MS;
+    for (const ball of game.balls) {
+      ball.vx *= SLOW_BALL_MULTIPLIER;
+      ball.vy *= SLOW_BALL_MULTIPLIER;
+    }
+    game.activePowerup = { name: "Slow Ball", until: game.slowBallUntil };
+    return;
+  }
+
+  if (type === "big") {
+    game.bigBallUntil = now + BIG_BALL_DURATION_MS;
+    for (const ball of game.balls) {
+      ball.radius = BIG_BALL_RADIUS;
+    }
+    game.activePowerup = { name: "Big Ball", until: game.bigBallUntil };
   }
 }
 
@@ -372,6 +439,7 @@ function resolvePaddleCollision(ball) {
 
   ball.vx = Math.sign(clamped || 1) * Math.cos(angle) * speed;
   ball.vy = -Math.sin(angle) * speed;
+  ball.vx += (game.paddle.velocity || 0) * 0.3;
   ball.y = game.paddle.y - ball.radius - 0.5;
 }
 
@@ -385,7 +453,7 @@ function resolveBrickCollision(ball, dt) {
     game.bricksLeft -= 1;
     game.score += BRICK_ROW_POINTS[brick.row];
     syncHud();
-    spawnPowerup(brick.x, brick.y);
+    spawnPowerup(brick.x, brick.y, brick.isPowerBrick);
 
     const overlapLeft = (ball.x + ball.radius) - rect.x;
     const overlapRight = (rect.x + rect.w) - (ball.x - ball.radius);
@@ -406,10 +474,35 @@ function resolveBrickCollision(ball, dt) {
 }
 
 function updatePaddle(dt) {
-  if (game.widePaddleUntil && performance.now() > game.widePaddleUntil) {
+  const now = performance.now();
+
+  if (game.widePaddleUntil && now > game.widePaddleUntil) {
     game.widePaddleUntil = 0;
     setPaddleWidth(PADDLE_BASE_WIDTH);
   }
+
+  if (game.slowBallUntil && now > game.slowBallUntil) {
+    const restore = 1 / SLOW_BALL_MULTIPLIER;
+    for (const ball of game.balls) {
+      ball.vx *= restore;
+      ball.vy *= restore;
+    }
+    game.slowBallUntil = 0;
+  }
+
+  if (game.bigBallUntil && now > game.bigBallUntil) {
+    for (const ball of game.balls) {
+      ball.radius = BALL_RADIUS;
+    }
+    game.bigBallUntil = 0;
+  }
+
+  if (game.activePowerup && now > game.activePowerup.until) {
+    game.activePowerup = null;
+  }
+
+  game.paddle.velocity = (game.paddle.x - (game.paddle.prevX || game.paddle.x)) / (dt || 1/60);
+  game.paddle.prevX = game.paddle.x;
 
   if (input.pointerActive) {
     game.paddle.x = input.pointerX - game.paddle.width / 2;
@@ -499,6 +592,37 @@ function updatePowerups(dt) {
   game.powerups = active;
 }
 
+function updateLaserBullets(dt) {
+  const active = [];
+  for (const bullet of game.laserBullets) {
+    bullet.y += bullet.vy * dt;
+    if (bullet.y < 0) continue;
+
+    let hitBrick = false;
+    for (const brick of game.bricks) {
+      if (!brick.alive) continue;
+      if (bullet.x >= brick.x && bullet.x <= brick.x + BRICK_WIDTH &&
+          bullet.y >= brick.y && bullet.y <= brick.y + BRICK_HEIGHT) {
+        brick.alive = false;
+        game.bricksLeft -= 1;
+        game.score += BRICK_ROW_POINTS[brick.row];
+        syncHud();
+        spawnPowerup(brick.x, brick.y, brick.isPowerBrick);
+        hitBrick = true;
+        break;
+      }
+    }
+    if (!hitBrick) {
+      active.push(bullet);
+    }
+  }
+  game.laserBullets = active;
+
+  if (game.bricksLeft <= 0) {
+    beginLevel(game.level + 1);
+  }
+}
+
 function updateWinState() {
   if (performance.now() >= game.winFlashUntil) {
     game.state = GAME_STATES.PLAYING;
@@ -513,6 +637,7 @@ function update(dt) {
   if (game.state === GAME_STATES.PLAYING) {
     updateBalls(dt);
     updatePowerups(dt);
+    updateLaserBullets(dt);
   } else if (game.state === GAME_STATES.WIN) {
     updateWinState();
   }
@@ -541,20 +666,48 @@ function renderBackground() {
 function renderBricks() {
   for (const brick of game.bricks) {
     if (!brick.alive) continue;
-    ctx.fillStyle = COLORS.brickRows[brick.row];
-    drawRoundedRect(brick.x, brick.y, BRICK_WIDTH, BRICK_HEIGHT, 4);
-    ctx.fill();
+    if (brick.isPowerBrick) {
+      ctx.save();
+      ctx.shadowColor = "#ffc107";
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = "#ffc107";
+      drawRoundedRect(brick.x, brick.y, BRICK_WIDTH, BRICK_HEIGHT, 4);
+      ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = "#fff8e1";
+      ctx.lineWidth = 1.5;
+      drawRoundedRect(brick.x, brick.y, BRICK_WIDTH, BRICK_HEIGHT, 4);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = COLORS.brickRows[brick.row];
+      drawRoundedRect(brick.x, brick.y, BRICK_WIDTH, BRICK_HEIGHT, 4);
+      ctx.fill();
+    }
   }
 }
 
 function renderPaddle() {
-  ctx.fillStyle = COLORS.paddle;
+  const now = performance.now();
+  if (game.laserPaddleUntil > now) {
+    ctx.fillStyle = "#ff4444";
+  } else if (game.widePaddleUntil > now) {
+    ctx.fillStyle = "#00bcd4";
+  } else {
+    ctx.fillStyle = COLORS.paddle;
+  }
   drawRoundedRect(game.paddle.x, game.paddle.y, game.paddle.width, game.paddle.height, 6);
   ctx.fill();
 }
 
 function renderBalls() {
-  ctx.fillStyle = COLORS.ball;
+  const now = performance.now();
+  if (game.slowBallUntil > now) {
+    ctx.fillStyle = "#ffd54f";
+  } else if (game.bigBallUntil > now) {
+    ctx.fillStyle = "#ff8800";
+  } else {
+    ctx.fillStyle = COLORS.ball;
+  }
   for (const ball of game.balls) {
     ctx.beginPath();
     ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
@@ -562,16 +715,31 @@ function renderBalls() {
   }
 }
 
+function renderLaserBullets() {
+  ctx.fillStyle = "#ff4444";
+  for (const bullet of game.laserBullets) {
+    ctx.fillRect(bullet.x - 2, bullet.y - 6, 4, 12);
+  }
+}
+
 function renderPowerups() {
+  const pillStyles = {
+    wide:  { color: "#3fa9f5", label: "W" },
+    multi: { color: "#ffd54f", label: "M" },
+    laser: { color: "#ff4444", label: "L" },
+    slow:  { color: "#ffeb3b", label: "S" },
+    big:   { color: "#ff8800", label: "B" }
+  };
   for (const powerup of game.powerups) {
-    ctx.fillStyle = powerup.type === "wide" ? COLORS.powerupWide : COLORS.powerupMulti;
+    const style = pillStyles[powerup.type] || pillStyles.wide;
+    ctx.fillStyle = style.color;
     drawRoundedRect(powerup.x, powerup.y, powerup.w, powerup.h, powerup.h / 2);
     ctx.fill();
     ctx.fillStyle = "#101014";
-    ctx.font = "11px 'Segoe UI', system-ui, sans-serif";
+    ctx.font = "bold 11px 'Segoe UI', system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(powerup.type === "wide" ? "W" : "M", powerup.x + powerup.w / 2, powerup.y + powerup.h / 2 + 0.4);
+    ctx.fillText(style.label, powerup.x + powerup.w / 2, powerup.y + powerup.h / 2 + 0.4);
   }
 }
 
@@ -585,12 +753,44 @@ function renderMessage(text) {
   ctx.fillText(text, CANVAS_WIDTH / 2, CANVAS_HEIGHT * 0.43);
 }
 
+function renderPowerupIndicator() {
+  if (!game.activePowerup) return;
+  const now = performance.now();
+  const remaining = Math.max(0, game.activePowerup.until - now);
+  const total = game.activePowerup.until - (game.activePowerup.until - remaining) + remaining;
+
+  const barWidth = 100;
+  const barHeight = 8;
+  const barX = CANVAS_WIDTH - barWidth - 12;
+  const barY = 14;
+
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.font = "bold 11px 'Segoe UI', system-ui, sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "top";
+  ctx.fillText(game.activePowerup.name, barX - 6, barY - 1);
+
+  ctx.fillStyle = "rgba(255,255,255,0.2)";
+  drawRoundedRect(barX, barY, barWidth, barHeight, 4);
+  ctx.fill();
+
+  const maxDuration = 10_000;
+  const ratio = Math.min(remaining / maxDuration, 1);
+  if (ratio > 0) {
+    ctx.fillStyle = "#4caf50";
+    drawRoundedRect(barX, barY, barWidth * ratio, barHeight, 4);
+    ctx.fill();
+  }
+}
+
 function render() {
   renderBackground();
   renderBricks();
   renderPowerups();
+  renderLaserBullets();
   renderPaddle();
   renderBalls();
+  renderPowerupIndicator();
 
   if (game.state === GAME_STATES.IDLE) {
     renderMessage("Click or press Space to launch");

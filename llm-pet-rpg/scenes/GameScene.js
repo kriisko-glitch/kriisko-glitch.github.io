@@ -226,6 +226,17 @@
     }
 
     this.events.once('shutdown', this.shutdown, this);
+    var scene = this;
+    this.moveDir = { x: 0, y: 0 };
+    window.__gameAPI = {
+      moveLeft: function() { scene.moveDir.x = -1; },
+      moveRight: function() { scene.moveDir.x = 1; },
+      moveUp: function() { scene.moveDir.y = -1; },
+      moveDown: function() { scene.moveDir.y = 1; },
+      stopX: function() { scene.moveDir.x = 0; },
+      stopY: function() { scene.moveDir.y = 0; },
+      attack: function() { scene.playerAttack(); scene.petAttackNearby(); }
+    };
     this.events.once('destroy', this.shutdown, this);
   };
 
@@ -783,18 +794,10 @@
 
     var moveX = 0;
     var moveY = 0;
-    if (this.keys.left.isDown) {
-      moveX -= 1;
-    }
-    if (this.keys.right.isDown) {
-      moveX += 1;
-    }
-    if (this.keys.up.isDown) {
-      moveY -= 1;
-    }
-    if (this.keys.down.isDown) {
-      moveY += 1;
-    }
+    if (this.keys.left.isDown || this.moveDir.x < 0) { moveX -= 1; }
+    if (this.keys.right.isDown || this.moveDir.x > 0) { moveX += 1; }
+    if (this.keys.up.isDown || this.moveDir.y < 0) { moveY -= 1; }
+    if (this.keys.down.isDown || this.moveDir.y > 0) { moveY += 1; }
 
     if (moveX !== 0 || moveY !== 0) {
       var dir = new Phaser.Math.Vector2(moveX, moveY).normalize();
@@ -858,6 +861,22 @@
       this.damageEnemy(enemy, damage, true);
       enemy.body.velocity.x += this.facing.x * SCENE.ATTACK_KNOCKBACK_SPEED;
       enemy.body.velocity.y += this.facing.y * SCENE.ATTACK_KNOCKBACK_SPEED;
+    }
+  };
+
+  GameScene.prototype.petAttackNearby = function() {
+    if (!this.pet || !this.pet.active || this.isGameOver || this.isFloorTransitioning) return;
+    var enemies = this.enemies.getChildren();
+    var petRange = 100;
+    for (var i = 0; i < enemies.length; i += 1) {
+      var enemy = enemies[i];
+      if (!enemy.active) continue;
+      var dx = enemy.x - this.pet.x;
+      var dy = enemy.y - this.pet.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= petRange) {
+        var damage = Math.max(1, this.calculatePetAttack() - (enemy.getData('defense') || 0));
+        this.damageEnemy(enemy, damage, false);
+      }
     }
   };
 
@@ -2032,6 +2051,7 @@
     if (!this.sceneAlive) {
       return;
     }
+    window.__gameAPI = null;
     this.sceneAlive = false;
 
     if (this.onChatPlayerMessage) {

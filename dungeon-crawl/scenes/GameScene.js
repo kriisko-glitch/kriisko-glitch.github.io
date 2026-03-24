@@ -270,9 +270,21 @@
 
       this.broadcastHud(true);
       this.broadcastMap(true);
+      var scene = this;
+      this.moveDir = { x: 0, y: 0 };
+      window.__gameAPI = {
+        moveLeft: function() { scene.moveDir.x = -1; },
+        moveRight: function() { scene.moveDir.x = 1; },
+        moveUp: function() { scene.moveDir.y = -1; },
+        moveDown: function() { scene.moveDir.y = 1; },
+        stopX: function() { scene.moveDir.x = 0; },
+        stopY: function() { scene.moveDir.y = 0; },
+        attack: function() { scene.tryPlayerAttack(); }
+      };
     }
 
     onShutdown() {
+      window.__gameAPI = null;
       this.input.off("pointerdown", this.onPointerDown, this);
     }
 
@@ -881,18 +893,10 @@
       var vx = 0;
       var vy = 0;
 
-      if (this.keys.left.isDown) {
-        vx -= 1;
-      }
-      if (this.keys.right.isDown) {
-        vx += 1;
-      }
-      if (this.keys.up.isDown) {
-        vy -= 1;
-      }
-      if (this.keys.down.isDown) {
-        vy += 1;
-      }
+      if (this.keys.left.isDown || this.moveDir.x < 0) { vx -= 1; }
+      if (this.keys.right.isDown || this.moveDir.x > 0) { vx += 1; }
+      if (this.keys.up.isDown || this.moveDir.y < 0) { vy -= 1; }
+      if (this.keys.down.isDown || this.moveDir.y > 0) { vy += 1; }
 
       var isMoving = vx !== 0 || vy !== 0;
       if (isMoving) {
