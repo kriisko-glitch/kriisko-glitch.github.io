@@ -160,9 +160,8 @@
     }
 
     @media (pointer: coarse) {
-      #chat-input-overlay,
-      #mobile-talk-btn {
-        display: none !important;
+      #chat-input-overlay {
+        display: none;
       }
     }
 
@@ -268,8 +267,8 @@
       e.stopPropagation();
       var input = document.getElementById('chat-input');
       var overlay = document.getElementById('chat-input-overlay');
-      if (overlay) overlay.style.display = 'block';
-      if (input) input.focus();
+      if (overlay) overlay.style.display = 'flex';
+      if (input) { input.focus(); input.select(); }
     });
   })();
   </script>

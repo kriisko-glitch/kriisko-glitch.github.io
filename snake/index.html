@@ -48,8 +48,8 @@
       border: 3px solid #0f3460;
       border-radius: 4px;
       box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-      width: 100%;
-      height: 100%;
+      width: min(400px, calc(100vw - 10px));
+      height: min(400px, calc(100vw - 10px));
     }
     .overlay {
       position: absolute;
@@ -78,9 +78,7 @@
     .wrap {
       position: relative;
       display: inline-block;
-      width: 400px;
-      height: 400px;
-      max-width: 100vw;
+      max-width: min(400px, calc(100vw - 10px));
       max-height: 100vh;
     }
   </style>

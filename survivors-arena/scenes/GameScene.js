@@ -420,6 +420,13 @@
   };
 
   GameScene.prototype.updateBackground = function () {
+    var cam = this.cameras.main;
+    this.floorLayer.tilePositionX = cam.scrollX * 0.5;
+    this.floorLayer.tilePositionY = cam.scrollY * 0.5;
+    this.midLayer.tilePositionX = cam.scrollX * 0.2;
+    this.midLayer.tilePositionY = cam.scrollY * 0.2;
+    this.starLayer.tilePositionX = cam.scrollX * 0.05;
+    this.starLayer.tilePositionY = cam.scrollY * 0.05;
   };
 
   GameScene.prototype.updatePlayerMovement = function (delta) {

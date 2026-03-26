@@ -84,7 +84,8 @@
 
     this.chatOverlay = document.getElementById('chat-input-overlay');
     this.chatInput = document.getElementById('chat-input');
-    if (this.chatOverlay) {
+    var isMobile = 'ontouchstart' in window || window.matchMedia('(pointer: coarse)').matches;
+    if (this.chatOverlay && !isMobile) {
       this.chatOverlay.style.display = 'block';
     }
     if (this.chatInput) {
@@ -243,8 +244,12 @@
   };
 
   HUDScene.prototype.focusInput = function() {
+    if (this.chatOverlay) {
+      this.chatOverlay.style.display = 'flex';
+    }
     if (this.chatInput && this.visibleHUD) {
       this.chatInput.focus();
+      this.chatInput.select();
     }
   };
 
