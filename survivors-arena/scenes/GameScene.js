@@ -172,12 +172,14 @@
     var textures = this.cfg.TEXTURES;
     var width = this.cfg.GAME.WIDTH;
     var height = this.cfg.GAME.HEIGHT;
+    var cx = width / 2;
+    var cy = height / 2;
 
     this.cameras.main.setBackgroundColor("#0d0d1a");
 
-    this.floorLayer = this.add.tileSprite(0, 0, width * 2, height * 2, textures.FLOOR_GRID).setScrollFactor(0).setDepth(-15);
-    this.starLayer = this.add.tileSprite(0, 0, width * 2, height * 2, textures.STAR_LAYER).setScrollFactor(0).setDepth(-30).setAlpha(0.8);
-    this.midLayer = this.add.tileSprite(0, 0, width * 2, height * 2, textures.MID_LAYER).setScrollFactor(0).setDepth(-22).setAlpha(0.42);
+    this.floorLayer = this.add.tileSprite(cx, cy, width * 2, height * 2, textures.FLOOR_GRID).setScrollFactor(0).setDepth(-15);
+    this.starLayer = this.add.tileSprite(cx, cy, width * 2, height * 2, textures.STAR_LAYER).setScrollFactor(0).setDepth(-30).setAlpha(0.8);
+    this.midLayer = this.add.tileSprite(cx, cy, width * 2, height * 2, textures.MID_LAYER).setScrollFactor(0).setDepth(-22).setAlpha(0.42);
   };
 
   GameScene.prototype.createPlayer = function () {
@@ -418,13 +420,6 @@
   };
 
   GameScene.prototype.updateBackground = function () {
-    var cam = this.cameras.main;
-    var cx = cam.worldView.centerX;
-    var cy = cam.worldView.centerY;
-
-    this.floorLayer.setPosition(cx, cy);
-    this.midLayer.setPosition(cx, cy);
-    this.starLayer.setPosition(cx, cy);
   };
 
   GameScene.prototype.updatePlayerMovement = function (delta) {
@@ -688,11 +683,6 @@
 
   GameScene.prototype.updateWeapons = function () {
     var now = this.time.now;
-
-    if (this.weaponState.orb.owned && now >= this.weaponState.orb.nextFireAt) {
-      this.fireOrb();
-      this.weaponState.orb.nextFireAt = now + this.getWeaponCooldown(this.cfg.WEAPONS.ORB.COOLDOWN_MS);
-    }
 
     if (this.weaponState.slash.owned && now >= this.weaponState.slash.nextFireAt) {
       this.fireSlash();
