@@ -79,11 +79,8 @@
 <script>
 (function() {
 
-var leaderboardActive = false;
-
 function isLeaderboardVisible() {
-  return leaderboardActive ||
-         !!document.getElementById('klb-initials-overlay') ||
+  return !!document.getElementById('klb-initials-overlay') ||
          !!document.getElementById('klb-show-overlay');
 }
 
@@ -570,19 +567,12 @@ function updateBalls(dt) {
     return;
   }
 
-  if (game.balls.length === 0 && game.state === GAME_STATES.PLAYING && !leaderboardActive) {
+  if (game.balls.length === 0 && game.state === GAME_STATES.PLAYING && !isLeaderboardVisible()) {
     game.state = GAME_STATES.DEAD;
     if (window.KriiskoLeaderboard && window.KriiskoLeaderboard.qualifies('breakout', game.score)) {
-      leaderboardActive = true;
       window.KriiskoLeaderboard.promptInitials('breakout', game.score, function(initials) {
         if (initials) window.KriiskoLeaderboard.submit('breakout', game.score, initials);
         window.KriiskoLeaderboard.show('breakout');
-        var pollId = setInterval(function() {
-          if (!document.getElementById('klb-show-overlay')) {
-            leaderboardActive = false;
-            clearInterval(pollId);
-          }
-        }, 200);
       });
     }
   }
