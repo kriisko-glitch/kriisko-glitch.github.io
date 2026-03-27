@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kriisko Feedback</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg0: #06060d;
+      --bg1: #0d0d1a;
+      --panel: rgba(18, 20, 36, 0.92);
+      --panel-border: rgba(0, 255, 255, 0.18);
+      --text: #f3f7ff;
+      --muted: rgba(243, 247, 255, 0.72);
+      --accent: #0ff;
+      --accent-2: #e94560;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(circle at top left, rgba(233, 69, 96, 0.22), transparent 28%),
+        radial-gradient(circle at 80% 10%, rgba(0, 255, 255, 0.15), transparent 24%),
+        linear-gradient(180deg, var(--bg1), var(--bg0));
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      padding: 32px 16px 40px;
+      display: grid;
+      place-items: start center;
+    }
+
+    .shell {
+      width: min(100%, 760px);
+      display: grid;
+      gap: 16px;
+    }
+
+    .hero {
+      padding: 24px 24px 20px;
+      border: 1px solid var(--panel-border);
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(14, 18, 33, 0.96), rgba(9, 11, 19, 0.96));
+      box-shadow: 0 22px 60px rgba(0, 0, 0, 0.38);
+    }
+
+    .eyebrow {
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.22em;
+      font-size: 0.76rem;
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2rem, 4vw, 3.2rem);
+      line-height: 1;
+    }
+
+    .lead {
+      margin: 12px 0 0;
+      max-width: 60ch;
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1.6;
+    }
+
+    .panel {
+      padding: 20px 24px 24px;
+      border: 1px solid var(--panel-border);
+      border-radius: 18px;
+      background: var(--panel);
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+    }
+
+    .meta {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      margin-bottom: 18px;
+    }
+
+    .chip {
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--muted);
+      font-size: 0.92rem;
+      overflow-wrap: anywhere;
+    }
+
+    .chip strong {
+      display: block;
+      color: var(--text);
+      font-size: 0.78rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    form {
+      display: grid;
+      gap: 16px;
+    }
+
+    label {
+      display: grid;
+      gap: 8px;
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+
+    select, input, textarea, button {
+      font: inherit;
+    }
+
+    select, input, textarea {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(0, 0, 0, 0.28);
+      color: var(--text);
+      padding: 12px 14px;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 160px;
+      resize: vertical;
+    }
+
+    select:focus, input:focus, textarea:focus {
+      border-color: rgba(0, 255, 255, 0.55);
+      box-shadow: 0 0 0 3px rgba(0, 255, 255, 0.12);
+    }
+
+    .row {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+
+    .checkbox {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      user-select: none;
+    }
+
+    .checkbox input {
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      accent-color: var(--accent);
+    }
+
+    .footer-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .counter {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 18px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent-2), #ff8f8f);
+      color: #fff;
+      box-shadow: 0 10px 24px rgba(233, 69, 96, 0.28);
+      font-weight: 700;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .status {
+      min-height: 1.4em;
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+
+    .status.ok { color: #8effa0; }
+    .status.error { color: #ffb4b4; }
+
+    .transport-note {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(0, 255, 255, 0.08);
+      border: 1px solid rgba(0, 255, 255, 0.15);
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .transport-note strong {
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="eyebrow">Player Feedback Intake</div>
+      <h1>Tell us what broke, confused, or could be better.</h1>
+      <p class="lead">This shared page collects bug reports, ideas, balance notes, and confusing moments from the live games. Your game context is prefilled automatically when you open it from a title.</p>
+    </section>
+
+    <section class="panel">
+      <div class="meta" aria-live="polite">
+        <div class="chip"><strong>Game</strong><span id="meta-game">Unknown</span></div>
+        <div class="chip"><strong>Source</strong><span id="meta-source">manual</span></div>
+        <div class="chip"><strong>Page</strong><span id="meta-page">Unknown</span></div>
+        <div class="chip"><strong>Viewport</strong><span id="meta-viewport">Unknown</span></div>
+      </div>
+
+      <form id="feedback-form" novalidate>
+        <div class="row">
+          <label>
+            Feedback type
+            <select id="feedback-type" name="type" required>
+              <option value="bug">bug</option>
+              <option value="idea">idea</option>
+              <option value="balance">balance</option>
+              <option value="confusing">confusing</option>
+              <option value="other">other</option>
+            </select>
+          </label>
+
+          <label>
+            Contact
+            <input id="feedback-contact" name="contact" type="text" maxlength="120" placeholder="Optional email, handle, or leave blank">
+          </label>
+        </div>
+
+        <label>
+          Feedback message
+          <textarea id="feedback-message" name="message" maxlength="500" minlength="8" required placeholder="What happened? What were you expecting?"></textarea>
+        </label>
+
+        <label class="checkbox">
+          <input id="feedback-notify" name="notify" type="checkbox">
+          <span>notify me if this ships</span>
+        </label>
+
+        <div class="footer-row">
+          <div class="counter"><span id="char-count">0</span>/500 characters</div>
+          <div class="actions">
+            <a class="btn btn-secondary" href="../index.html">Back to games</a>
+            <button class="btn btn-primary" type="submit">Send feedback</button>
+          </div>
+        </div>
+
+        <div id="feedback-status" class="status" aria-live="polite"></div>
+      </form>
+
+      <div id="transport-note" class="transport-note">
+        <strong>Stub mode:</strong> no intake endpoint is configured yet, so submissions will be stored locally in this browser until the pipeline is wired up.
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      'use strict';
+
+      var MAX_LENGTH = 500;
+      var STORAGE_KEY = 'kriisko_feedback_queue';
+      var ENDPOINT = (window.KriiskoFeedbackConfig && window.KriiskoFeedbackConfig.endpoint) || '';
+
+      var params = new URLSearchParams(location.search);
+      var form = document.getElementById('feedback-form');
+      var typeEl = document.getElementById('feedback-type');
+      var contactEl = document.getElementById('feedback-contact');
+      var messageEl = document.getElementById('feedback-message');
+      var notifyEl = document.getElementById('feedback-notify');
+      var statusEl = document.getElementById('feedback-status');
+      var charCountEl = document.getElementById('char-count');
+      var transportNoteEl = document.getElementById('transport-note');
+
+      var meta = {
+        game: params.get('game') || 'Unknown',
+        source: params.get('source') || 'manual',
+        page: params.get('page') || 'Unknown',
+        viewport: params.get('viewport') || 'Unknown',
+        ua: params.get('ua') || ''
+      };
+
+      document.getElementById('meta-game').textContent = meta.game;
+      document.getElementById('meta-source').textContent = meta.source;
+      document.getElementById('meta-page').textContent = meta.page;
+      document.getElementById('meta-viewport').textContent = meta.viewport;
+
+      if (params.get('type')) {
+        typeEl.value = params.get('type');
+      }
+      if (params.get('contact')) {
+        contactEl.value = params.get('contact');
+      }
+      if (params.get('message')) {
+        messageEl.value = params.get('message').slice(0, MAX_LENGTH);
+      }
+      if (params.get('notify') === '1' || params.get('notify') === 'true') {
+        notifyEl.checked = true;
+      }
+
+      if (ENDPOINT) {
+        transportNoteEl.innerHTML = '<strong>Live endpoint:</strong> feedback will post to the configured intake URL.';
+      }
+
+      function setStatus(text, kind) {
+        statusEl.textContent = text;
+        statusEl.className = 'status' + (kind ? ' ' + kind : '');
+      }
+
+      function readQueue() {
+        try {
+          var raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return [];
+          var parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (_) {
+          return [];
+        }
+      }
+
+      function writeQueue(items) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+      }
+
+      function queueFallback(payload) {
+        try {
+          var queue = readQueue();
+          queue.push(payload);
+          writeQueue(queue);
+          return true;
+        } catch (_) {
+          return false;
+        }
+      }
+
+      function buildPayload() {
+        return {
+          game: meta.game,
+          source: meta.source,
+          page: meta.page,
+          viewport: {
+            width: window.innerWidth,
+            height: window.innerHeight,
+            dpr: window.devicePixelRatio || 1
+          },
+          userAgent: meta.ua,
+          type: typeEl.value,
+          contact: contactEl.value.trim(),
+          message: messageEl.value.trim(),
+          notifyOnShip: notifyEl.checked,
+          createdAt: new Date().toISOString()
+        };
+      }
+
+      function updateCounter() {
+        charCountEl.textContent = String(messageEl.value.length);
+      }
+
+      messageEl.addEventListener('input', updateCounter);
+      updateCounter();
+
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+
+        var payload = buildPayload();
+        if (payload.message.length < 8) {
+          setStatus('Please add a little more detail before sending.', 'error');
+          return;
+        }
+
+        setStatus('Sending...', '');
+
+        if (!ENDPOINT) {
+          if (queueFallback(payload)) {
+            setStatus('Saved locally in stub mode. We will swap this to the real intake endpoint later.', 'ok');
+          } else {
+            setStatus('Stub mode is active, but this browser would not let us store the report locally.', 'error');
+          }
+          return;
+        }
+
+        fetch(ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).then(function (response) {
+          if (!response.ok) {
+            throw new Error('Request failed with status ' + response.status);
+          }
+          setStatus('Thanks. Your feedback was sent.', 'ok');
+          form.reset();
+          typeEl.value = 'bug';
+          updateCounter();
+        }).catch(function () {
+          if (queueFallback(payload)) {
+            setStatus('The endpoint was unavailable, so we saved this locally instead.', 'error');
+          } else {
+            setStatus('The endpoint failed and local storage is unavailable, so nothing was saved.', 'error');
+          }
+        });
+      });
+    })();
+  </script>
+</body>
+</html>
