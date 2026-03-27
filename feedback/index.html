@@ -73,6 +73,21 @@
       line-height: 1.6;
     }
 
+    .context-note {
+      margin: 0 0 16px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--muted);
+      font-size: 0.94rem;
+      line-height: 1.5;
+    }
+
+    .context-note strong {
+      color: var(--text);
+    }
+
     .panel {
       padding: 20px 24px 24px;
       border: 1px solid var(--panel-border);
@@ -238,10 +253,12 @@
     <section class="hero">
       <div class="eyebrow">Player Feedback Intake</div>
       <h1>Tell us what broke, confused, or could be better.</h1>
-      <p class="lead">This shared page collects bug reports, ideas, balance notes, and confusing moments from the live games. Your game context is prefilled automatically when you open it from a title.</p>
+      <p class="lead">This shared page collects bug reports, ideas, balance notes, and confusing moments from the live games. When you open it from a title, we prefill the game context automatically.</p>
     </section>
 
     <section class="panel">
+      <div id="context-note" class="context-note"></div>
+
       <div class="meta" aria-live="polite">
         <div class="chip"><strong>Game</strong><span id="meta-game">Unknown</span></div>
         <div class="chip"><strong>Source</strong><span id="meta-source">manual</span></div>
@@ -312,19 +329,46 @@
       var statusEl = document.getElementById('feedback-status');
       var charCountEl = document.getElementById('char-count');
       var transportNoteEl = document.getElementById('transport-note');
+      var contextNoteEl = document.getElementById('context-note');
 
       var meta = {
-        game: params.get('game') || 'Unknown',
-        source: params.get('source') || 'manual',
-        page: params.get('page') || 'Unknown',
-        viewport: params.get('viewport') || 'Unknown',
+        game: params.get('game') || '',
+        source: params.get('source') || '',
+        page: params.get('page') || '',
+        viewport: params.get('viewport') || '',
         ua: params.get('ua') || ''
       };
 
-      document.getElementById('meta-game').textContent = meta.game;
-      document.getElementById('meta-source').textContent = meta.source;
-      document.getElementById('meta-page').textContent = meta.page;
-      document.getElementById('meta-viewport').textContent = meta.viewport;
+      function hasGameContext() {
+        return !!meta.game || meta.source === 'in-game' || !!meta.page || !!meta.viewport || !!meta.ua;
+      }
+
+      function labelSource(source) {
+        if (source === 'in-game') return 'In-game launch';
+        if (source === 'manual') return 'Direct entry';
+        return source || 'Direct entry';
+      }
+
+      function labelOrFallback(value, fallback) {
+        return value || fallback;
+      }
+
+      var contextAttached = hasGameContext();
+
+      document.getElementById('meta-game').textContent = labelOrFallback(meta.game, 'Not attached');
+      document.getElementById('meta-source').textContent = labelSource(meta.source);
+      document.getElementById('meta-page').textContent = labelOrFallback(meta.page, contextAttached ? 'Not supplied' : 'Unavailable without a game launch');
+      document.getElementById('meta-viewport').textContent = labelOrFallback(meta.viewport, contextAttached ? 'Not supplied' : 'Unavailable without a game launch');
+
+      if (contextAttached) {
+        if (meta.source === 'in-game') {
+          contextNoteEl.innerHTML = '<strong>Game context attached.</strong> We picked up the title, page, and viewport from the launcher. Feel free to edit any field before sending.';
+        } else {
+          contextNoteEl.innerHTML = '<strong>Partial context only.</strong> This report was opened directly, so the game metadata is not attached. Please include the game name and what you were doing in the message.';
+        }
+      } else {
+        contextNoteEl.innerHTML = '<strong>No game context attached.</strong> This page was opened directly, so only your message and live viewport will be saved unless you add the game name yourself.';
+      }
 
       if (params.get('type')) {
         typeEl.value = params.get('type');
@@ -341,6 +385,8 @@
 
       if (ENDPOINT) {
         transportNoteEl.innerHTML = '<strong>Live endpoint:</strong> feedback will post to the configured intake URL.';
+      } else {
+        transportNoteEl.innerHTML = '<strong>Stub mode:</strong> submissions will be stored locally in this browser, and direct entry is expected when no game context is attached.';
       }
 
       function setStatus(text, kind) {
