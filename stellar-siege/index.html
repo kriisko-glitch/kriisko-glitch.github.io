@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stellar Siege</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Orbitron', monospace; }
+    canvas { display: block; }
+
+    #hud {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 10; color: #fff;
+    }
+
+    #hud-top {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 16px 24px; width: 100%;
+    }
+
+    #health-container {
+      display: flex; align-items: center; gap: 10px;
+    }
+    #health-icon { font-size: 20px; filter: drop-shadow(0 0 4px #ff4444); }
+    #health-bar-bg {
+      width: 200px; height: 16px; border-radius: 8px;
+      background: rgba(255,255,255,0.1); border: 1px solid rgba(0,255,255,0.3);
+      backdrop-filter: blur(4px); overflow: hidden;
+    }
+    #health-bar {
+      height: 100%; width: 100%; border-radius: 8px;
+      background: linear-gradient(90deg, #ff4444, #ff8844);
+      transition: width 0.3s ease;
+    }
+
+    #score {
+      font-size: 20px; font-weight: 700; letter-spacing: 2px;
+      text-shadow: 0 0 10px rgba(0,255,255,0.6);
+    }
+
+    #wave-display {
+      position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
+      font-size: 14px; letter-spacing: 3px; opacity: 0.7;
+      text-shadow: 0 0 8px rgba(0,255,255,0.4);
+    }
+
+    #crosshair {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 30px; height: 30px; pointer-events: none;
+    }
+    #crosshair::before, #crosshair::after {
+      content: ''; position: absolute; background: rgba(0,255,255,0.8);
+    }
+    #crosshair::before { width: 2px; height: 100%; left: 50%; transform: translateX(-50%); }
+    #crosshair::after { width: 100%; height: 2px; top: 50%; transform: translateY(-50%); }
+    #crosshair.shielded { box-shadow: 0 0 12px 4px rgba(0,255,255,0.6); border-radius: 50%; }
+
+    #shield-indicator {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 44px; height: 44px; border-radius: 50%;
+      border: 2px solid rgba(0,255,255,0.6);
+      box-shadow: 0 0 12px rgba(0,255,255,0.4), inset 0 0 8px rgba(0,255,255,0.2);
+      display: none;
+    }
+
+    #wave-announce {
+      position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
+      font-size: 48px; font-weight: 900; letter-spacing: 6px;
+      text-shadow: 0 0 30px rgba(0,255,255,0.8), 0 0 60px rgba(0,100,255,0.4);
+      opacity: 0; transition: opacity 0.4s ease;
+    }
+
+    #game-over {
+      display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.85); flex-direction: column;
+      justify-content: center; align-items: center; gap: 20px;
+    }
+    #game-over h1 {
+      font-size: 56px; font-weight: 900; letter-spacing: 8px;
+      background: linear-gradient(135deg, #ff4444, #ff8844);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      text-shadow: none; filter: drop-shadow(0 0 20px rgba(255,68,68,0.6));
+    }
+    #game-over .final-score { font-size: 24px; color: #0ff; letter-spacing: 3px; }
+    #game-over .restart-hint { font-size: 14px; color: rgba(255,255,255,0.5); letter-spacing: 2px; margin-top: 20px; }
+  </style>
+  <script type="module" crossorigin src="./assets/index-BW4lrRhW.js"></script>
+</head>
+<body>
+  <div id="hud">
+    <div id="hud-top">
+      <div id="health-container">
+        <span id="health-icon">&#10084;</span>
+        <div id="health-bar-bg"><div id="health-bar"></div></div>
+      </div>
+      <div id="score">SCORE: 000000</div>
+    </div>
+    <div id="wave-display">WAVE 1</div>
+    <div id="crosshair"></div>
+    <div id="shield-indicator"></div>
+    <div id="wave-announce"></div>
+    <div id="game-over">
+      <h1>GAME OVER</h1>
+      <div class="final-score" id="final-score">SCORE: 000000</div>
+      <div class="restart-hint">PRESS R TO RESTART</div>
+    </div>
+  </div>
+</body>
+</html>
