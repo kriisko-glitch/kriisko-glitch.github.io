@@ -23,11 +23,16 @@
 
     if (last === 'index.html' && segments.length >= 2) {
       var parent = segments[segments.length - 2];
-      if (parent && parent !== 'feedback') return parent;
+      if (parent && parent !== 'games' && parent !== 'feedback') return parent;
       return 'portal';
     }
 
-    if (segments.length && segments[0] && segments[0] !== 'feedback' && segments[0] !== 'index.html') {
+    var gamesIndex = segments.indexOf('games');
+    if (gamesIndex >= 0 && segments[gamesIndex + 1] && segments[gamesIndex + 1] !== 'feedback') {
+      return segments[gamesIndex + 1];
+    }
+
+    if (segments.length && segments[0] && segments[0] !== 'games' && segments[0] !== 'feedback' && segments[0] !== 'index.html') {
       return segments[0].replace(/\.html$/, '');
     }
 
@@ -38,7 +43,7 @@
     if (typeof FEEDBACK_PAGE === 'string' && FEEDBACK_PAGE) return FEEDBACK_PAGE;
 
     var path = getPath();
-    if (/\/index\.html$/.test(path) || path === '/') {
+    if (/\/games\/index\.html$/.test(path) || path === '/games/' || path === '/games') {
       return 'feedback/index.html';
     }
     return '../feedback/index.html';
@@ -101,7 +106,9 @@
       'font:700 12px/1 "Segoe UI",system-ui,sans-serif;background:linear-gradient(135deg,#0f3460,#1a1a2e);' +
       'border:1px solid rgba(0,255,255,0.75);color:#0ff;box-shadow:0 0 16px rgba(0,255,255,0.18);' +
       'z-index:' + Z_INDEX + ';backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);' +
-      'text-transform:uppercase;white-space:nowrap;';
+      'text-transform:uppercase;white-space:nowrap;' +
+      'touch-action:manipulation;-webkit-transform:translateZ(0);transform:translateZ(0);' +
+      '-webkit-tap-highlight-color:rgba(0,255,255,0.2);';
 
     positionButton(link);
     syncVisibility(link);
@@ -117,7 +124,16 @@
       link.style.boxShadow = '0 0 16px rgba(0,255,255,0.18)';
     });
 
-    document.body.appendChild(link);
+    // Mobile: explicit touchend handler — bypasses 300ms delay and any canvas touch capture.
+    // navigates same-tab so mobile browsers don't treat it as a popup.
+    link.addEventListener('touchend', function (e) {
+      e.preventDefault();
+      window.location.href = link.href;
+    });
+
+    // Append to <html> not <body> — games often set overflow:hidden on body which
+    // clips position:fixed children on iOS Safari and makes them untappable.
+    document.documentElement.appendChild(link);
 
     if ('MutationObserver' in window) {
       var observer = new MutationObserver(function () {
