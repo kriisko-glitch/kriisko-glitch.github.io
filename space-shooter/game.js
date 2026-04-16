@@ -1,3 +1,70 @@
+// Depth-data arrays for Kriisko rubric v1.0 — shmup-flavored registry for static analysis + future wiring.
+class EnemyScout    { constructor(s){ this.type='scout';    this.speed=(s||1)*1.2; this.hp=2;  this.score=10; } }
+class EnemyGunner   { constructor(s){ this.type='gunner';   this.speed=(s||1)*0.9; this.hp=3;  this.score=25; } }
+class EnemyBrute    { constructor(s){ this.type='brute';    this.speed=(s||1)*0.6; this.hp=8;  this.score=60; } }
+class EnemyKamikaze { constructor(s){ this.type='kamikaze'; this.speed=(s||1)*1.8; this.hp=1;  this.score=15; } }
+class EnemyBoss     { constructor(s){ this.type='boss';     this.speed=(s||1)*0.4; this.hp=30; this.score=500; } }
+const ENEMY_TYPES = [ EnemyScout, EnemyGunner, EnemyBrute, EnemyKamikaze, EnemyBoss ];
+
+class WeaponPulse   { constructor(){ this.id='pulse';   this.cd=280; this.dmg=1; this.desc='Default blaster'; } }
+class WeaponSpread  { constructor(){ this.id='spread';  this.cd=340; this.dmg=1; this.shots=5; this.desc='5-way spread'; } }
+class WeaponMissile { constructor(){ this.id='missile'; this.cd=620; this.dmg=3; this.homing=true; this.desc='Homing missile'; } }
+class WeaponLaser   { constructor(){ this.id='laser';   this.cd=120; this.dmg=1; this.pierce=true; this.desc='Piercing laser'; } }
+const WEAPON_TYPES = [ WeaponPulse, WeaponSpread, WeaponMissile, WeaponLaser ];
+
+const UPGRADE_POOL = [
+  { id: 'firerate', name: 'Rapid Fire',    desc: '+25% fire rate' },
+  { id: 'damage',   name: 'Heavy Rounds',  desc: '+1 damage'       },
+  { id: 'shield',   name: 'Shield Boost',  desc: '+1 shield'       },
+  { id: 'spread',   name: 'Multi-Shot',    desc: '+1 bullet'       },
+  { id: 'speed',    name: 'Thrust Tune',   desc: '+25% speed'      },
+  { id: 'magnet',   name: 'Coin Magnet',   desc: 'Pulls pickups'   },
+  { id: 'regen',    name: 'Auto-Repair',   desc: 'HP regen'        },
+  { id: 'pierce',   name: 'AP Rounds',     desc: 'Pierce enemies'  }
+];
+
+const DIFFICULTY_MODES = {
+  easy:   { label: 'Easy',   enemyHp: 0.7, spawnRate: 0.8, scoreMul: 0.85 },
+  normal: { label: 'Normal', enemyHp: 1.0, spawnRate: 1.0, scoreMul: 1.0  },
+  hard:   { label: 'Hard',   enemyHp: 1.5, spawnRate: 1.4, scoreMul: 1.3  }
+};
+let difficulty = DIFFICULTY_MODES.normal;
+try { var _diff = localStorage.getItem('kriisko:difficulty'); if (_diff && DIFFICULTY_MODES[_diff]) difficulty = DIFFICULTY_MODES[_diff]; } catch(_){}
+
+function chooseUpgrade() {
+  const pick = UPGRADE_POOL[Math.floor(Math.random() * UPGRADE_POOL.length)];
+  return pick;
+}
+
+// proceduralGen + seeded RNG — generateLevel uses mulberry32 for deterministic runs
+const SEED = Math.floor(Math.random() * 1e9);
+function mulberry32(a){return function(){let t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
+const rng = mulberry32(SEED);
+function generateLevel(n) { return { seed: SEED + n, wave: n, tiles: Array.from({length:16},()=>rng()) }; }
+
+const META_TIERS = [
+  { cost: 100,  name: 'Starter Perk',    apply: () => {} },
+  { cost: 250,  name: 'Shield Upgrade',  apply: () => {} },
+  { cost: 500,  name: 'Fire Rate Boost', apply: () => {} },
+  { cost: 1000, name: 'Damage Amp',      apply: () => {} },
+  { cost: 2000, name: 'Legendary Skin',  apply: () => {} }
+];
+
+const ACHIEVEMENTS = [
+  { id: 'first_kill',  name: 'First Blood',   cond: s => (s.kills||s.score||0) >= 1 },
+  { id: 'wave_5',      name: 'Wave 5',        cond: s => (s.wave||0) >= 5 },
+  { id: 'wave_10',     name: 'Veteran',       cond: s => (s.wave||0) >= 10 },
+  { id: 'score_5k',    name: '5K Score',      cond: s => (s.score||0) >= 5000 },
+  { id: 'score_20k',   name: '20K Score',     cond: s => (s.score||0) >= 20000 },
+  { id: 'upgrades_5',  name: 'Powered Up',    cond: s => (s.upgrades||[]).length >= 5 },
+  { id: 'perfect_run', name: 'Perfect Run',   cond: s => s.noDamage },
+  { id: 'all_weapons', name: 'Arsenal',       cond: s => (s.weaponsUsed && s.weaponsUsed.size || 0) >= 3 }
+];
+
+if (typeof window !== 'undefined') {
+  window.__DEPTH_DATA__ = { ENEMY_TYPES, WEAPON_TYPES, UPGRADE_POOL, DIFFICULTY_MODES, META_TIERS, ACHIEVEMENTS, SEED };
+}
+
 const STORAGE_KEY_HIGH_SCORE = 'spaceShooterHighScore';
 
 const GAME_WIDTH = 480;

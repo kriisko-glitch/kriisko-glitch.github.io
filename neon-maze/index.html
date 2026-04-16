@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neon Maze</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;background:#0a0e1a;color:#e8f7ff;font-family:'Orbitron',system-ui,sans-serif;min-height:100vh;}
+  body{display:flex;flex-direction:column;align-items:center;padding:24px 12px;box-sizing:border-box;}
+  h1{font-family:'Audiowide',sans-serif;font-size:32px;margin:0 0 6px;color:#00ffff;text-shadow:0 0 12px #00ffff88,0 0 24px #00ffff44;letter-spacing:2px;}
+  .sub{font-size:12px;opacity:.65;margin-bottom:14px;letter-spacing:1.5px;}
+  #hud{display:flex;gap:18px;margin-bottom:10px;font-size:14px;letter-spacing:1px;}
+  #hud span{color:#00ffff;}
+  #hud b{color:#e94560;font-weight:700;}
+  #wrap{position:relative;width:600px;height:600px;}
+  canvas{display:block;border:2px solid #0f3460;border-radius:4px;background:#0a0e1a;box-shadow:0 0 24px #00ffff22,0 0 60px #0f346055;}
+  .hint{font-size:11px;opacity:.45;margin-top:10px;letter-spacing:1px;}
+</style>
+</head>
+<body>
+<h1>NEON MAZE</h1>
+<div class="sub">COLLECT ALL KEYS &bull; REACH THE EXIT &bull; AVOID GHOSTS</div>
+<div id="hud">
+  <div>LEVEL <b id="hudLevel">1</b></div>
+  <div>KEYS <b id="hudKeys">0/0</b></div>
+  <div>TIME <b id="hudTime">0.0</b></div>
+  <div>SCORE <b id="hudScore">0</b></div>
+</div>
+<div id="wrap">
+  <canvas id="game" width="600" height="600" aria-label="Neon Maze game. Use WASD or arrow keys to move one cell at a time. Collect yellow keys and reach the magenta exit. Avoid red ghosts."></canvas>
+</div>
+<div class="hint">WASD / ARROWS &nbsp;&bull;&nbsp; P PAUSE</div>
+<script src="../shared/kriisko-juice.js"></script>
+<script src="../shared/kriisko-meta.js"></script>
+<script>
+(function(){
+  'use strict';
+
+  // ---------- Config ----------
+  var CANVAS_SIZE = 600;
+  var BASE_GRID = 15;
+  var CELL_BASE = 40;
+  var MOVE_MS = 150;
+  var FOG_RADIUS = 3;
+  var START_KEYS = 3;
+  var START_GHOSTS = 2;
+
+  var COL = {
+    bg:     '#0a0e1a',
+    wallA:  '#0f3460',
+    wallB:  '#16417a',
+    grid:   '#122043',
+    player: '#00ffff',
+    playerGlow: '#66ffff',
+    exit:   '#e94560',
+    exitGlow:'#ff6b8a',
+    key:    '#ffd93d',
+    keyGlow:'#fff5a0',
+    ghost:  '#ff3860',
+    ghostGlow:'#ff7080',
+    trail:  '#164a7a',
+    fog:    'rgba(5,8,16,0.92)'
+  };
+
+  // ---------- State ----------
+  var canvas = document.getElementById('game');
+  var ctx = canvas.getContext('2d');
+  var state = 'idle';
+  var level = 1;
+  var score = 0;
+  var timeStart = 0;
+  var timeAccum = 0;
+  var pauseStart = 0;
+  var grid = [];         // grid[y][x] = { walls:{n,e,s,w}, visited }
+  var gridSize = BASE_GRID;
+  var cellSize = CELL_BASE;
+  var player = { cx:0, cy:0, px:0, py:0, anim:null };
+  var exitCell = { x:0, y:0 };
+  var keys = [];         // {x,y,taken}
+  var keysCollected = 0;
+  var ghosts = [];       // {cx,cy,px,py,dir,anim}
+  var lastStep = 0;
+
+  // ---------- Maze generation (recursive backtracker / iterative DFS) ----------
+  function makeCell(){ return { walls:{n:true,e:true,s:true,w:true}, visited:false }; }
+
+  function generateMaze(n){
+    var g = new Array(n);
+    for (var y=0; y<n; y++){
+      g[y] = new Array(n);
+      for (var x=0; x<n; x++) g[y][x] = makeCell();
+    }
+    var stack = [];
+    var start = { x:0, y:0 };
+    g[0][0].visited = true;
+    stack.push(start);
+    while (stack.length){
+      var cur = stack[stack.length-1];
+      var neighbours = [];
+      if (cur.y>0     && !g[cur.y-1][cur.x].visited) neighbours.push('n');
+      if (cur.x<n-1   && !g[cur.y][cur.x+1].visited) neighbours.push('e');
+      if (cur.y<n-1   && !g[cur.y+1][cur.x].visited) neighbours.push('s');
+      if (cur.x>0     && !g[cur.y][cur.x-1].visited) neighbours.push('w');
+      if (!neighbours.length){ stack.pop(); continue; }
+      var dir = neighbours[(Math.random()*neighbours.length)|0];
+      var nx = cur.x, ny = cur.y;
+      if (dir==='n'){ ny--; g[cur.y][cur.x].walls.n = false; g[ny][nx].walls.s = false; }
+      if (dir==='e'){ nx++; g[cur.y][cur.x].walls.e = false; g[ny][nx].walls.w = false; }
+      if (dir==='s'){ ny++; g[cur.y][cur.x].walls.s = false; g[ny][nx].walls.n = false; }
+      if (dir==='w'){ nx--; g[cur.y][cur.x].walls.w = false; g[ny][nx].walls.e = false; }
+      g[ny][nx].visited = true;
+      stack.push({ x:nx, y:ny });
+    }
+    return g;
+  }
+
+  function openAt(x,y,dir){
+    if (!grid[y] || !grid[y][x]) return false;
+    return !grid[y][x].walls[dir];
+  }
+
+  // ---------- Level setup ----------
+  function startLevel(){
+    gridSize = BASE_GRID + (level-1);
+    if (gridSize > 21) gridSize = 21;
+    cellSize = Math.floor(CANVAS_SIZE / gridSize);
+    grid = generateMaze(gridSize);
+    player.cx = 0; player.cy = 0;
+    player.px = 0; player.py = 0;
+    player.anim = null;
+    exitCell = { x: gridSize-1, y: gridSize-1 };
+
+    // Keys: scattered 2-4 based on level, avoid start+exit
+    var keyCount = Math.min(4, START_KEYS + ((level-1)%2));
+    keys = [];
+    for (var i=0; i<keyCount; i++){
+      for (var tries=0; tries<200; tries++){
+        var kx = (Math.random()*gridSize)|0;
+        var ky = (Math.random()*gridSize)|0;
+        if ((kx===0 && ky===0) || (kx===exitCell.x && ky===exitCell.y)) continue;
+        var clash = false;
+        for (var j=0; j<keys.length; j++){ if (keys[j].x===kx && keys[j].y===ky){ clash = true; break; } }
+        if (clash) continue;
+        keys.push({ x:kx, y:ky, taken:false });
+        break;
+      }
+    }
+    keysCollected = 0;
+
+    // Ghosts
+    var ghostCount = START_GHOSTS + (level-1);
+    if (ghostCount > 6) ghostCount = 6;
+    ghosts = [];
+    for (var g=0; g<ghostCount; g++){
+      for (var gt=0; gt<200; gt++){
+        var gx = (Math.random()*gridSize)|0;
+        var gy = (Math.random()*gridSize)|0;
+        var dist = Math.abs(gx-0) + Math.abs(gy-0);
+        if (dist < 4) continue;
+        if (gx===exitCell.x && gy===exitCell.y) continue;
+        ghosts.push({ cx:gx, cy:gy, px:gx, py:gy, dir:null, anim:null, nextStep:performance.now()+600+Math.random()*400 });
+        break;
+      }
+    }
+
+    state = 'play';
+    timeStart = performance.now();
+    timeAccum = 0;
+    updateHud();
+  }
+
+  // ---------- Input ----------
+  function tryMove(dir){
+    if (state !== 'play') return;
+    if (window.KM && KM.isPaused()) return;
+    if (player.anim) return;
+    var nx = player.cx, ny = player.cy;
+    var wallDir = dir;
+    if (dir==='n'){ if (!openAt(player.cx,player.cy,'n')) return; ny--; }
+    else if (dir==='e'){ if (!openAt(player.cx,player.cy,'e')) return; nx++; }
+    else if (dir==='s'){ if (!openAt(player.cx,player.cy,'s')) return; ny++; }
+    else if (dir==='w'){ if (!openAt(player.cx,player.cy,'w')) return; nx--; }
+    if (nx===player.cx && ny===player.cy) return;
+    animatePlayer(nx, ny);
+    if (window.KJ) KJ.shoot();
+  }
+
+  function animatePlayer(nx, ny){
+    var fromX = player.cx, fromY = player.cy;
+    var t0 = performance.now();
+    player.anim = {
+      fromX:fromX, fromY:fromY, toX:nx, toY:ny, t0:t0
+    };
+    player.cx = nx; player.cy = ny;
+  }
+
+  window.addEventListener('keydown', function(e){
+    var k = e.key;
+    if (k==='ArrowUp'   || k==='w' || k==='W'){ tryMove('n'); e.preventDefault(); }
+    else if (k==='ArrowRight'|| k==='d' || k==='D'){ tryMove('e'); e.preventDefault(); }
+    else if (k==='ArrowDown' || k==='s' || k==='S'){ tryMove('s'); e.preventDefault(); }
+    else if (k==='ArrowLeft' || k==='a' || k==='A'){ tryMove('w'); e.preventDefault(); }
+  });
+
+  // ---------- Ghost AI (random along corridors) ----------
+  function ghostStep(g, now){
+    if (g.anim) return;
+    var dirs = [];
+    if (openAt(g.cx,g.cy,'n')) dirs.push('n');
+    if (openAt(g.cx,g.cy,'e')) dirs.push('e');
+    if (openAt(g.cx,g.cy,'s')) dirs.push('s');
+    if (openAt(g.cx,g.cy,'w')) dirs.push('w');
+    if (!dirs.length) return;
+    // Prefer not to reverse
+    var reverse = { n:'s', s:'n', e:'w', w:'e' };
+    if (g.dir && dirs.length > 1){
+      var forward = dirs.filter(function(d){ return d !== reverse[g.dir]; });
+      if (forward.length) dirs = forward;
+    }
+    var pick = dirs[(Math.random()*dirs.length)|0];
+    g.dir = pick;
+    var nx = g.cx, ny = g.cy;
+    if (pick==='n') ny--;
+    else if (pick==='e') nx++;
+    else if (pick==='s') ny++;
+    else if (pick==='w') nx--;
+    g.anim = { fromX:g.cx, fromY:g.cy, toX:nx, toY:ny, t0:now };
+    g.cx = nx; g.cy = ny;
+  }
+
+  // ---------- Update ----------
+  function update(now){
+    if (state !== 'play') return;
+    if (window.KM && KM.isPaused()){
+      if (!pauseStart) pauseStart = now;
+      return;
+    } else if (pauseStart){
+      // Shift timeStart to not count paused time
+      timeStart += (now - pauseStart);
+      pauseStart = 0;
+    }
+
+    // Player anim
+    if (player.anim){
+      var p = player.anim;
+      var t = (now - p.t0) / MOVE_MS;
+      if (t >= 1){
+        player.px = p.toX; player.py = p.toY;
+        player.anim = null;
+        onPlayerLanded();
+      } else {
+        var e = easeInOut(t);
+        player.px = p.fromX + (p.toX - p.fromX) * e;
+        player.py = p.fromY + (p.toY - p.fromY) * e;
+      }
+    }
+
+    // Ghosts
+    for (var i=0; i<ghosts.length; i++){
+      var g = ghosts[i];
+      if (g.anim){
+        var a = g.anim;
+        var tt = (now - a.t0) / MOVE_MS;
+        if (tt >= 1){
+          g.px = a.toX; g.py = a.toY;
+          g.anim = null;
+          g.nextStep = now + 400 + Math.random()*350;
+        } else {
+          var ee = easeInOut(tt);
+          g.px = a.fromX + (a.toX - a.fromX) * ee;
+          g.py = a.fromY + (a.toY - a.fromY) * ee;
+        }
+      } else if (now >= g.nextStep){
+        ghostStep(g, now);
+      }
+    }
+
+    // Collision (cell-based)
+    for (var j=0; j<ghosts.length; j++){
+      var gc = ghosts[j];
+      if (gc.cx === player.cx && gc.cy === player.cy){
+        onDeath('caught by a ghost');
+        break;
+      }
+    }
+
+    updateHud(now);
+  }
+
+  function onPlayerLanded(){
+    // Pickups
+    for (var i=0; i<keys.length; i++){
+      var k = keys[i];
+      if (!k.taken && k.x === player.cx && k.y === player.cy){
+        k.taken = true;
+        keysCollected++;
+        score += 25;
+        var worldX = canvas.getBoundingClientRect().left + (k.x+0.5)*cellSize;
+        var worldY = canvas.getBoundingClientRect().top + (k.y+0.5)*cellSize;
+        if (window.KJ){ KJ.pickup(); KJ.particles(worldX, worldY, 14, COL.key); KJ.flash('#ffd93d', 40); }
+      }
+    }
+    // Exit condition
+    if (player.cx === exitCell.x && player.cy === exitCell.y && keysCollected >= keys.length){
+      onLevelComplete();
+    }
+  }
+
+  function onLevelComplete(){
+    state = 'transition';
+    var elapsed = (performance.now() - timeStart) / 1000;
+    var bonus = Math.max(0, Math.round(500 - elapsed * 5));
+    score += 100 + bonus;
+    if (window.KJ){
+      KJ.levelUp();
+      KJ.flash('#00ffff', 160);
+      var rect = canvas.getBoundingClientRect();
+      KJ.particles(rect.left + canvas.width/2, rect.top + canvas.height/2, 40, COL.player);
+    }
+    if (window.KM) KM.trackScore(score);
+    level++;
+    setTimeout(startLevel, 700);
+  }
+
+  function onDeath(cause){
+    state = 'dead';
+    if (window.KJ){
+      KJ.shake(8, 200);
+      KJ.flash('#e94560', 120);
+      var rect = canvas.getBoundingClientRect();
+      KJ.particles(rect.left + (player.cx+0.5)*cellSize, rect.top + (player.cy+0.5)*cellSize, 28, COL.ghost);
+      KJ.gameOver();
+    }
+    if (window.KM){
+      KM.gameOver(score, {
+        cause: cause,
+        onRetry: function(){
+          level = 1;
+          score = 0;
+          startLevel();
+        }
+      });
+    }
+  }
+
+  // ---------- Render ----------
+  function drawMaze(){
+    ctx.fillStyle = COL.bg;
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    // Subtle grid glow backdrop
+    ctx.strokeStyle = COL.grid;
+    ctx.lineWidth = 1;
+    for (var gx=0; gx<=gridSize; gx++){
+      ctx.beginPath();
+      ctx.moveTo(gx*cellSize + 0.5, 0);
+      ctx.lineTo(gx*cellSize + 0.5, gridSize*cellSize);
+      ctx.stroke();
+    }
+    for (var gy=0; gy<=gridSize; gy++){
+      ctx.beginPath();
+      ctx.moveTo(0, gy*cellSize + 0.5);
+      ctx.lineTo(gridSize*cellSize, gy*cellSize + 0.5);
+      ctx.stroke();
+    }
+
+    // Walls
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = COL.wallA;
+    ctx.shadowBlur = 6;
+    ctx.shadowColor = COL.wallB;
+    for (var y=0; y<gridSize; y++){
+      for (var x=0; x<gridSize; x++){
+        var c = grid[y][x];
+        var ox = x*cellSize;
+        var oy = y*cellSize;
+        if (c.walls.n){ ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox+cellSize, oy); ctx.stroke(); }
+        if (c.walls.w){ ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox, oy+cellSize); ctx.stroke(); }
+        // Always draw right/bottom edges for border completeness (borders happen to be on wall grids too)
+        if (x===gridSize-1 && c.walls.e){ ctx.beginPath(); ctx.moveTo(ox+cellSize, oy); ctx.lineTo(ox+cellSize, oy+cellSize); ctx.stroke(); }
+        if (y===gridSize-1 && c.walls.s){ ctx.beginPath(); ctx.moveTo(ox, oy+cellSize); ctx.lineTo(ox+cellSize, oy+cellSize); ctx.stroke(); }
+      }
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  function drawExit(pulse){
+    var cx = (exitCell.x+0.5)*cellSize;
+    var cy = (exitCell.y+0.5)*cellSize;
+    var r = cellSize*0.34;
+    ctx.save();
+    ctx.shadowBlur = 18 + pulse*6;
+    ctx.shadowColor = COL.exitGlow;
+    ctx.fillStyle = COL.exit;
+    ctx.beginPath();
+    var sides = 4;
+    var ang = pulse*0.4;
+    for (var i=0;i<sides;i++){
+      var a = ang + i*(Math.PI*2/sides) - Math.PI/2;
+      var rx = cx + Math.cos(a)*r;
+      var ry = cy + Math.sin(a)*r;
+      if (i===0) ctx.moveTo(rx,ry); else ctx.lineTo(rx,ry);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawKeys(pulse){
+    for (var i=0; i<keys.length; i++){
+      var k = keys[i];
+      if (k.taken) continue;
+      var cx = (k.x+0.5)*cellSize;
+      var cy = (k.y+0.5)*cellSize;
+      var r = cellSize*0.18 + Math.sin(pulse+i)*1.5;
+      ctx.save();
+      ctx.shadowBlur = 14;
+      ctx.shadowColor = COL.keyGlow;
+      ctx.fillStyle = COL.key;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawGhosts(){
+    for (var i=0; i<ghosts.length; i++){
+      var g = ghosts[i];
+      var cx = (g.px+0.5)*cellSize;
+      var cy = (g.py+0.5)*cellSize;
+      var s = cellSize*0.55;
+      ctx.save();
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = COL.ghostGlow;
+      ctx.fillStyle = COL.ghost;
+      ctx.fillRect(cx - s/2, cy - s/2, s, s);
+      ctx.restore();
+      // Eyes
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(cx - s*0.2, cy - s*0.15, 3, 3);
+      ctx.fillRect(cx + s*0.1, cy - s*0.15, 3, 3);
+    }
+  }
+
+  function drawPlayer(){
+    var cx = (player.px+0.5)*cellSize;
+    var cy = (player.py+0.5)*cellSize;
+    var r = cellSize*0.3;
+    ctx.save();
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = COL.playerGlow;
+    ctx.fillStyle = COL.player;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawFog(){
+    // Visibility: darken everything outside a radius around the player
+    var cx = (player.px+0.5)*cellSize;
+    var cy = (player.py+0.5)*cellSize;
+    var rVis = FOG_RADIUS * cellSize;
+    ctx.save();
+    var grad = ctx.createRadialGradient(cx, cy, rVis*0.55, cx, cy, rVis*1.2);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(0.75, 'rgba(5,8,16,0.55)');
+    grad.addColorStop(1, COL.fog);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.restore();
+  }
+
+  function render(now){
+    var pulse = (Math.sin(now*0.004)+1)*0.5;
+    drawMaze();
+    drawExit(pulse);
+    drawKeys(now*0.004);
+    drawGhosts();
+    drawPlayer();
+    drawFog();
+  }
+
+  // ---------- Loop ----------
+  function loop(now){
+    update(now);
+    render(now);
+    requestAnimationFrame(loop);
+  }
+
+  function easeInOut(t){ return t<0.5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2; }
+
+  function updateHud(now){
+    document.getElementById('hudLevel').textContent = level;
+    document.getElementById('hudKeys').textContent = keysCollected + '/' + keys.length;
+    document.getElementById('hudScore').textContent = score;
+    var t = ((now || performance.now()) - timeStart) / 1000;
+    if (state !== 'play') t = 0;
+    document.getElementById('hudTime').textContent = t.toFixed(1);
+  }
+
+  // ---------- Debug API ----------
+  window.__NEON_MAZE__ = Object.assign(window.__NEON_MAZE__ || {}, {
+    slug: 'neon-maze',
+    getScore: function(){ return score; },
+    getState: function(){ return state; },
+    getLevel: function(){ return level; },
+    getKeys:  function(){ return { collected: keysCollected, total: keys.length }; },
+    getGridSize: function(){ return gridSize; },
+    getGhostCount: function(){ return ghosts.length; }
+  });
+
+  // ---------- Meta / Juice init ----------
+  if (window.KM){
+    KM.init({
+      slug: 'neon-maze',
+      title: 'Neon Maze',
+      tagline: 'Procedural maze roguelike. Collect keys, reach the exit, outrun the ghosts.',
+      controls: 'WASD or Arrow keys to move one cell. P to pause.',
+      world: 'Fog of war. Each level adds a cell and a ghost. Time bonus on exit.'
+    });
+  }
+
+  startLevel();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

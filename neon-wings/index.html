@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neon Wings</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;background:#000;overflow:hidden;font-family:'Orbitron',sans-serif;color:#fff}
+canvas{display:block;background:#0a0a1a}
+#chip-row{position:absolute;top:8px;right:14px;display:flex;gap:6px;font-size:13px;z-index:5}
+.chip{padding:4px 10px;border-radius:12px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.3);color:#fff}
+.chip.gold{color:#ffd54f;border-color:rgba(255,213,79,0.5)}
+.chip.rose{color:#ff4081;border-color:rgba(255,64,129,0.5)}
+.chip.cyan{color:#00e5ff;border-color:rgba(0,229,255,0.5)}
+.overlay{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.88);z-index:20;padding:1rem;color:#fff;font-family:'Orbitron',sans-serif}
+.overlay.visible{display:flex}
+.overlay h2{color:#ffd54f;margin:0 0 0.5rem;font-size:2rem;text-shadow:0 0 16px #ffd54f}
+.overlay p{margin:0 0 1rem;opacity:0.9;text-align:center;font-size:0.9rem}
+.diff-row{display:flex;gap:8px;margin-bottom:1rem}
+.diff-btn{padding:0.5rem 1rem;cursor:pointer;background:transparent;border:2px solid #0ff;color:#0ff;border-radius:6px;font-family:inherit;font-size:0.9rem}
+.diff-btn.active{background:#0ff;color:#000}
+.go-btn{padding:0.6rem 1.4rem;cursor:pointer;background:#ff4081;color:#fff;border:none;border-radius:6px;font-weight:bold;font-family:inherit;font-size:1rem}
+.go-btn:hover{background:#ff6fa0}
+.upgrade-card{background:rgba(0,50,80,0.4);border:2px solid #0ff;border-radius:8px;padding:0.6rem 0.9rem;margin:4px 0;cursor:pointer;min-width:240px;text-align:left;color:#eee;font-family:inherit}
+.upgrade-card:hover{background:rgba(0,100,160,0.5)}
+.upgrade-card .uname{font-size:1rem;color:#ffd54f;display:block;margin-bottom:3px;text-shadow:0 0 6px #ffd54f}
+.upgrade-card .udesc{font-size:0.72rem;color:#aef}
+.ach-toast{position:fixed;top:18px;left:18px;background:linear-gradient(135deg,#003040,#ff4081);padding:10px 14px;border-radius:8px;color:#fff;font-family:'Orbitron',sans-serif;font-size:0.9rem;font-weight:bold;box-shadow:0 0 20px rgba(255,64,129,0.6);z-index:100;pointer-events:none;animation:wingsSlide 2.5s ease-out forwards}
+@keyframes wingsSlide{0%{transform:translateX(-120%);opacity:0}12%{transform:translateX(0);opacity:1}85%{transform:translateX(0);opacity:1}100%{transform:translateX(-120%);opacity:0}}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Game canvas"></canvas>
+<div id="chip-row">
+  <span class="chip gold" id="coin-chip">&#9733; 0</span>
+  <span class="chip cyan" id="best-chip">Best 0</span>
+  <span class="chip rose" id="diff-chip">Normal</span>
+</div>
+<div id="start-modal" class="overlay visible">
+  <h2>NEON WINGS</h2>
+  <p>Click or Space to flap.<br>Upgrades every 80 points.</p>
+  <div class="diff-row" id="diff-row">
+    <button class="diff-btn" data-diff="easy">Easy</button>
+    <button class="diff-btn active" data-diff="normal">Normal</button>
+    <button class="diff-btn" data-diff="hard">Hard</button>
+  </div>
+  <button class="go-btn" id="start-btn">Start</button>
+</div>
+<div id="upgrade-modal" class="overlay">
+  <h2>Level Up!</h2>
+  <p>Pick one upgrade</p>
+  <div id="upgrade-choices"></div>
+</div>
+<script src="../shared/kriisko-juice.js"></script>
+<script src="../shared/kriisko-meta.js"></script>
+<script>
+const SLUG='neon-wings';
+const c=document.getElementById('c');
+const ctx=c.getContext('2d');
+function resize(){c.width=innerWidth;c.height=innerHeight;}
+resize();window.addEventListener('resize',resize);
+
+// META
+function lget(k,d){try{const v=localStorage.getItem('kriisko:'+SLUG+':'+k);return v===null?d:v;}catch(_){return d;}}
+function lset(k,v){try{localStorage.setItem('kriisko:'+SLUG+':'+k,String(v));}catch(_){}}
+function getCoins(){return parseInt(lget('coins','0'),10)||0;}
+function addCoins(n){lset('coins',getCoins()+n);}
+function getBest(){return parseInt(lget('best','0'),10)||0;}
+function setBest(n){if(n>getBest())lset('best',n);}
+function getUnlocked(){try{return JSON.parse(lget('ach','[]'));}catch(_){return[];}}
+function unlock(id,name){
+    const arr=getUnlocked();
+    if(arr.includes(id))return false;
+    arr.push(id);lset('ach',JSON.stringify(arr));
+    const el=document.createElement('div');el.className='ach-toast';el.textContent='Achievement: '+name;
+    document.body.appendChild(el);setTimeout(()=>el.remove(),2600);return true;
+}
+
+// DIFFICULTY
+const DIFFICULTIES={
+    easy:   {speed:1.5, gap:260, pipeRate:0.04, gravity:0.4, pointsMod:0.85, name:'Easy'},
+    normal: {speed:2,   gap:220, pipeRate:0.06, gravity:0.5, pointsMod:1.0,  name:'Normal'},
+    hard:   {speed:3,   gap:180, pipeRate:0.08, gravity:0.6, pointsMod:1.3,  name:'Hard'}
+};
+let selectedMode=lget('difficulty','normal');
+
+// ENEMY TYPES (obstacles)
+class EnemyPipe {
+    constructor(x,gap,y){this.x=x;this.w=70;this.top=y;this.bottom=y+gap;this.scored=false;this.type='pipe';this.color='#0f0';}
+    update(speed){this.x-=speed;}
+}
+class EnemyMovingPipe extends EnemyPipe {
+    constructor(x,gap,y){super(x,gap,y);this.type='moving';this.color='#ff00ff';this.t=0;this.baseTop=this.top;this.baseBottom=this.bottom;}
+    update(speed){super.update(speed);this.t+=0.04;const dy=Math.sin(this.t)*40;this.top=this.baseTop+dy;this.bottom=this.baseBottom+dy;}
+}
+class EnemyNarrowPipe extends EnemyPipe {
+    constructor(x,gap,y){super(x,gap*0.7,y);this.type='narrow';this.color='#ff8800';}
+}
+const ENEMY_TYPES=[
+    {name:'pipe',   ctor:EnemyPipe,       afterScore:0,  weight:0.65},
+    {name:'moving', ctor:EnemyMovingPipe, afterScore:50, weight:0.20},
+    {name:'narrow', ctor:EnemyNarrowPipe, afterScore:120,weight:0.15}
+];
+
+// UPGRADE POOL
+const UPGRADE_POOL=[
+    {id:'magnetBig',  name:'Magnet+',     desc:'Coins auto-pull toward you'},
+    {id:'coinMult',   name:'Coin Doubler',desc:'+1 coin per coin collected'},
+    {id:'shieldRech', name:'Shield Recharge',desc:'Start each run with shield'},
+    {id:'slowTime',   name:'Slow Time',   desc:'15s slow-time now'},
+    {id:'smallBird',  name:'Shrink',      desc:'240 shrink ticks now'},
+    {id:'scoreBoost', name:'Scholar',     desc:'+30% points per pipe'},
+    {id:'doubleJump', name:'Double Flap', desc:'Flap jumps +30% higher'}
+];
+
+// ACHIEVEMENTS
+const ACHIEVEMENTS=[
+    {id:'first_pipe', name:'First Pipe',     test:s=>s.score>=10},
+    {id:'score_100',  name:'Centurion',      test:s=>s.score>=100},
+    {id:'score_300',  name:'Sky Legend',     test:s=>s.score>=300},
+    {id:'hard_mode',  name:'Hard Mode Hero', test:s=>s.mode==='hard'&&s.score>=80},
+    {id:'coin_20',    name:'Coin Hunter',    test:s=>s.runCoins>=20},
+    {id:'coin_100',   name:'Hoarder',        test:s=>s.totalCoins>=100},
+    {id:'no_upgrades',name:'Purist',         test:s=>s.gameOver&&s.upgradesChosen===0&&s.score>=60},
+    {id:'all_types',  name:'Variety Play',   test:s=>s.seenTypes>=3}
+];
+
+const S={
+    menu:true,game:false,over:false,
+    score:0,coinsEarned:0,hs:getBest(),
+    speed:2,day:true,timer:0,
+    pipeGap:220,pipeMin:120,pipeMax:300,
+    pipes:[],powerups:[],particles:[],coins:[],shake:0,
+    // depth
+    upgrades:[],upgradesChosen:0,nextUpgradeAt:80,
+    magnetBig:false,coinMult:1,startShield:false,
+    slowTicks:0,shrinkBonus:0,pointMult:1.0,flapBoost:1.0,
+    seenTypes:new Set(),paused:false
+};
+const bird={x:120,y:c.height/2,w:28,h:28,vy:0,gr:0.5,flap:-8,shield:false,shrink:0,dead:false};
+
+function rnd(a,b){return Math.random()*(b-a)+a;}
+function particle(x,y,col){return {x,y,vx:rnd(-2,2),vy:rnd(-3,-1),life:30,col};}
+
+function pickPipeCtor(){
+    const candidates=ENEMY_TYPES.filter(t=>S.score>=t.afterScore);
+    const total=candidates.reduce((s,t)=>s+t.weight,0);
+    let r=Math.random()*total;
+    for(const t of candidates){r-=t.weight;if(r<=0)return t;}
+    return candidates[0];
+}
+
+function spawnPipe(){
+    const cfg=DIFFICULTIES[selectedMode];
+    const gap=cfg.gap-rnd(0,50);
+    const y=rnd(S.pipeMin,S.pipeMax);
+    const pick=pickPipeCtor();
+    S.seenTypes.add(pick.name);
+    const pipe=new pick.ctor(c.width+50,gap,y);
+    S.pipes.push(pipe);
+    if(Math.random()<0.4){
+        const type=Math.random()<0.5?'shield':(Math.random()<0.5?'shrink':'magnet');
+        S.powerups.push({x:c.width+50+pipe.w/2,y:y+gap/2,w:24,h:24,type});
+    }
+    if(Math.random()<0.6){
+        const cy=y+gap/2+rnd(-30,30);
+        S.coins.push({x:c.width+50+pipe.w/2,y:cy,w:16,h:16});
+    }
+}
+
+function reset(){
+    S.menu=false;S.game=true;S.over=false;
+    S.score=0;S.coinsEarned=0;
+    S.speed=DIFFICULTIES[selectedMode].speed;
+    S.day=true;S.timer=0;
+    bird.y=c.height/2;bird.vy=0;
+    bird.shield=S.startShield;
+    bird.shrink=0;bird.dead=false;
+    bird.gr=DIFFICULTIES[selectedMode].gravity;
+    S.pipes=[];S.powerups=[];S.coins=[];S.particles=[];
+    S.upgrades=[];S.upgradesChosen=0;S.nextUpgradeAt=80;
+    S.magnetBig=false;S.coinMult=1;S.slowTicks=0;S.shrinkBonus=0;
+    S.pointMult=1.0;S.flapBoost=1.0;
+    S.seenTypes=new Set();S.paused=false;
+}
+
+function flap(){
+    if(S.paused)return;
+    if(S.menu)return; // menu handled by start button
+    if(S.game&&!bird.dead){
+        bird.vy=bird.flap*S.flapBoost;
+        for(let i=0;i<5;i++)S.particles.push(particle(bird.x,bird.y+bird.h/2,'#0ff'));
+        KJ.shake(6, 150);KJ.hit();
+    }
+    if(S.over){S.over=false;reset();}
+}
+c.addEventListener('click',flap);
+window.addEventListener('keydown',e=>{
+    if(e.code==='Space'){e.preventDefault();flap();}
+});
+
+function chooseUpgrade(){
+    if(S.paused)return;
+    S.paused=true;
+    const pool=UPGRADE_POOL.slice();
+    for(let i=pool.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+    const choices=pool.slice(0,3);
+    const el=document.getElementById('upgrade-choices');
+    el.innerHTML='';
+    choices.forEach(u=>{
+        const b=document.createElement('button');
+        b.className='upgrade-card';
+        b.innerHTML='<span class="uname">'+u.name+'</span><span class="udesc">'+u.desc+'</span>';
+        b.addEventListener('click',()=>pickUpgrade(u));
+        el.appendChild(b);
+    });
+    document.getElementById('upgrade-modal').classList.add('visible');
+}
+function pickUpgrade(u){
+    S.upgrades.push(u.id);S.upgradesChosen++;
+    applyUpgrade(u.id);
+    document.getElementById('upgrade-modal').classList.remove('visible');
+    S.paused=false;
+}
+function applyUpgrade(id){
+    if(id==='magnetBig')S.magnetBig=true;
+    if(id==='coinMult')S.coinMult+=1;
+    if(id==='shieldRech'){S.startShield=true;bird.shield=true;}
+    if(id==='slowTime')S.slowTicks+=15*60;
+    if(id==='smallBird'){bird.shrink+=240;}
+    if(id==='scoreBoost')S.pointMult+=0.3;
+    if(id==='doubleJump')S.flapBoost+=0.3;
+}
+
+function checkAchievements(opts){
+    const stats={
+        score:S.score,
+        runCoins:S.coinsEarned,
+        totalCoins:getCoins(),
+        mode:selectedMode,
+        upgradesChosen:S.upgradesChosen,
+        seenTypes:S.seenTypes.size,
+        gameOver:!!opts&&!!opts.gameOver
+    };
+    const unlocked=getUnlocked();
+    for(const a of ACHIEVEMENTS){
+        if(!unlocked.includes(a.id)&&a.test(stats))unlock(a.id,a.name);
+    }
+}
+
+function update(){
+    if(S.menu||KM.isPaused()||S.paused)return;
+    if(S.game){
+        const speedMult=S.slowTicks>0?0.5:1;
+        S.timer++;
+        if(S.slowTicks>0)S.slowTicks--;
+        if(S.timer%1200===0){S.day=!S.day;}
+        if(S.timer%120===0&&S.speed<6)S.speed+=0.1;
+        bird.vy+=bird.gr*speedMult;
+        bird.y+=bird.vy*speedMult;
+        if(bird.y<0){bird.y=0;bird.vy=0;}
+        if(bird.y+bird.h>c.height){die();}
+        const hb=bird.shrink>0?bird.w*0.6:bird.w;
+        for(let p of S.pipes){
+            p.update(S.speed*speedMult);
+            if(!p.scored&&p.x+p.w<bird.x){
+                p.scored=true;
+                const gain=Math.round(10*S.pointMult*DIFFICULTIES[selectedMode].pointsMod);
+                S.score+=gain;
+                KM.trackScore(S.score);
+                if(S.score>=S.nextUpgradeAt){
+                    S.nextUpgradeAt+=80;
+                    checkAchievements();
+                    chooseUpgrade();
+                    return;
+                }
+            }
+            if(bird.x+bird.w>p.x&&bird.x<p.x+p.w){
+                if(bird.y<p.top||bird.y+hb>p.bottom){
+                    if(bird.shield){bird.shield=false;for(let i=0;i<20;i++)S.particles.push(particle(bird.x+bird.w/2,bird.y+bird.h/2,'#0ff'));KJ.shake(6, 150);}
+                    else die();
+                }
+            }
+        }
+        for(let i=S.powerups.length-1;i>=0;i--){
+            const pu=S.powerups[i];pu.x-=S.speed*speedMult;
+            if(Math.abs(pu.x-(bird.x+bird.w/2))<20&&Math.abs(pu.y-(bird.y+bird.h/2))<20){
+                if(pu.type==='shield')bird.shield=true;
+                if(pu.type==='shrink')bird.shrink=300;
+                if(pu.type==='magnet'){}
+                S.powerups.splice(i,1);
+                for(let j=0;j<20;j++)S.particles.push(particle(pu.x,pu.y,'#f0f'));KJ.pickup();
+            }
+            if(pu.x<-50)S.powerups.splice(i,1);
+        }
+        for(let i=S.coins.length-1;i>=0;i--){
+            const co=S.coins[i];
+            if(S.magnetBig){
+                const dx=(bird.x+bird.w/2)-co.x;
+                const dy=(bird.y+bird.h/2)-co.y;
+                const d=Math.hypot(dx,dy);
+                if(d<250){co.x+=dx/d*4;co.y+=dy/d*4;}
+            }
+            co.x-=S.speed*speedMult;
+            if(Math.abs(co.x-(bird.x+bird.w/2))<20&&Math.abs(co.y-(bird.y+bird.h/2))<20){
+                S.coinsEarned+=S.coinMult;
+                S.score+=5;
+                S.coins.splice(i,1);
+                for(let j=0;j<10;j++)S.particles.push(particle(co.x,co.y,'#ff0'));KJ.chime();
+            }
+            if(co.x<-50)S.coins.splice(i,1);
+        }
+        S.pipes=S.pipes.filter(p=>p.x>-100);
+        S.powerups=S.powerups.filter(p=>p.x>-100);
+        S.coins=S.coins.filter(c=>c.x>-100);
+        if(S.pipes.length===0||S.pipes[S.pipes.length-1].x<c.width-300)spawnPipe();
+        if(bird.shrink>0)bird.shrink--;
+        S.particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=0.2;p.life--;});
+        S.particles=S.particles.filter(p=>p.life>0);
+        for(let i=0;i<3;i++)S.particles.push(particle(bird.x-10,bird.y+bird.h/2,'#0ff'));
+        checkAchievements();
+    }
+}
+
+function die(){
+    bird.dead=true;S.game=false;S.over=true;
+    setBest(S.score);
+    addCoins(S.coinsEarned);
+    checkAchievements({gameOver:true});
+    updateChips();
+    for(let i=0;i<40;i++)S.particles.push(particle(bird.x+bird.w/2,bird.y+bird.h/2,'#f0f'));
+    KJ.shake(6, 150);KJ.gameOver();
+    S.shake=20;
+    S.hs=getBest();
+    KM.gameOver(S.score,{cause:'crash',onRetry:()=>{reset();}});
+}
+
+function draw(){
+    ctx.fillStyle=S.day?'#0a0a1a':'#050510';
+    ctx.fillRect(0,0,c.width,c.height);
+    if(S.shake>0){ctx.save();ctx.translate(rnd(-S.shake,S.shake),rnd(-S.shake,S.shake));S.shake--;}
+    function neonRect(x,y,w,h,col){
+        ctx.shadowColor=col;ctx.shadowBlur=20;
+        ctx.fillStyle=col;ctx.fillRect(x,y,w,h);
+        ctx.shadowBlur=0;
+    }
+    function neonCircle(x,y,r,col){
+        ctx.shadowColor=col;ctx.shadowBlur=20;
+        ctx.fillStyle=col;ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();
+        ctx.shadowBlur=0;
+    }
+    S.pipes.forEach(p=>{
+        neonRect(p.x,0,p.w,p.top,p.color||'#0f0');
+        neonRect(p.x,p.bottom,p.w,c.height-p.bottom,p.color||'#0f0');
+    });
+    S.powerups.forEach(pu=>{
+        const col=pu.type==='shield'?'#0ff':(pu.type==='shrink'?'#f0f':'#ff0');
+        neonCircle(pu.x,pu.y,12,col);
+    });
+    S.coins.forEach(co=>neonCircle(co.x,co.y,8,'#ff0'));
+    const hb=bird.shrink>0?bird.w*0.6:bird.w;
+    if(bird.shield){neonCircle(bird.x+hb/2,bird.y+hb/2,hb/2+8,'#0ff');}
+    neonRect(bird.x,bird.y,hb,hb,'#0ff');
+    S.particles.forEach(p=>{
+        ctx.globalAlpha=p.life/30;
+        neonCircle(p.x,p.y,3,p.col);
+        ctx.globalAlpha=1;
+    });
+    if(S.shake>0)ctx.restore();
+    ctx.fillStyle='#fff';ctx.font='bold 24px Orbitron';
+    ctx.fillText(`Score: ${S.score}`,30,40);
+    ctx.fillText(`Coins +${S.coinsEarned}`,30,70);
+    ctx.fillText(`Upgrades: ${S.upgrades.length}`,30,100);
+    if(S.slowTicks>0){ctx.fillStyle='#0ff';ctx.fillText(`SLOW: ${Math.ceil(S.slowTicks/60)}s`,30,130);}
+    if(S.over){
+        ctx.fillStyle='#fff';ctx.font='bold 48px Orbitron';ctx.textAlign='center';
+        ctx.fillText('GAME OVER',c.width/2,c.height/2-50);
+        ctx.font='24px Orbitron';
+        ctx.fillText(`Score ${S.score} · Best ${getBest()}`,c.width/2,c.height/2+0);
+        ctx.fillText('Click or Space to Restart',c.width/2,c.height/2+40);
+        ctx.textAlign='left';
+    }
+}
+
+// UI
+const startModal=document.getElementById('start-modal');
+const diffRow=document.getElementById('diff-row');
+const startBtn=document.getElementById('start-btn');
+const coinChipEl=document.getElementById('coin-chip');
+const bestChipEl=document.getElementById('best-chip');
+const diffChipEl=document.getElementById('diff-chip');
+function updateChips(){
+    coinChipEl.innerHTML='&#9733; '+getCoins();
+    bestChipEl.textContent='Best '+getBest();
+    diffChipEl.textContent=DIFFICULTIES[selectedMode].name;
+}
+Array.from(diffRow.querySelectorAll('.diff-btn')).forEach(btn=>{
+    if(btn.getAttribute('data-diff')===selectedMode)btn.classList.add('active');
+    else btn.classList.remove('active');
+    btn.addEventListener('click',()=>{
+        selectedMode=btn.getAttribute('data-diff');
+        lset('difficulty',selectedMode);
+        Array.from(diffRow.querySelectorAll('.diff-btn')).forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        updateChips();
+    });
+});
+startBtn.addEventListener('click',()=>{
+    startModal.classList.remove('visible');
+    reset();
+});
+
+KM.init({slug:SLUG, title:'Neon Wings', tagline:'Flap, fly, collect!', controls:'Click or Space', difficulty:selectedMode});
+updateChips();
+
+function loop(){update();draw();requestAnimationFrame(loop);}
+loop();
+
+window.__NEON_WINGS__={
+    getScore:        ()=>S.score,
+    getState:        ()=>S.menu?'menu':(S.over?'over':'playing'),
+    getRunCoins:     ()=>S.coinsEarned,
+    getSpeed:        ()=>S.speed,
+    getUpgrades:     ()=>S.upgrades.slice(),
+    getDifficulty:   ()=>selectedMode,
+    getCoins:        ()=>getCoins(),
+    getAchievements: ()=>getUnlocked(),
+    getPipeTypes:    ()=>ENEMY_TYPES.map(e=>e.name),
+    getPipes:        ()=>S.pipes.map(p=>({x:p.x,type:p.type}))
+};
+</script>
+</body>
+</html>

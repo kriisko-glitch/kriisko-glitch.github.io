@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neon Farm</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;background:#000;overflow:hidden;font-family:Arial,Helvetica,sans-serif;color:#0ff}
+canvas{display:block;background:radial-gradient(#111,#000)}
+#hud{position:absolute;top:10px;left:10px;font-size:18px;text-shadow:0 0 5px #0ff;font-family:Orbitron}
+#shop{position:absolute;top:10px;right:10px;width:200px}
+.shopItem{margin:5px 0;padding:10px;background:#111;border:1px solid #0ff;cursor:pointer;text-align:center;transition:background .2s}
+.shopItem:hover{background:#0ff1;color:#000}
+#prestigeBtn{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);padding:10px 20px;background:#111;border:1px solid #0ff;cursor:pointer}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Game canvas"></canvas>
+<div id="hud">
+  <div>Gold: <span id="gold">0</span></div>
+  <div>Gold/s: <span id="gps">0</span></div>
+  <div>Total: <span id="total">0</span></div>
+  <div>Stars: <span id="stars">0</span> (×<span id="mult">1</span>)</div>
+</div>
+<div id="shop"></div>
+<div id="prestigeBtn" style="display:none" aria-label="Prestige button">PRESTIGE</div>
+<script src="../shared/kriisko-juice.js"></script>
+<script src="../shared/kriisko-meta.js"></script>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+c.width=innerWidth;c.height=innerHeight;
+const S={gold:0,total:0,stars:0,lastSave:Date.now(),lastTick:Date.now()};
+const U={
+  click:{name:'Click Power',base:1,owned:1,cost:10},
+  auto:{name:'Auto-Harvester',base:1,owned:0,cost:50},
+  sprinkler:{name:'Sprinkler',base:5,owned:0,cost:250},
+  tractor:{name:'Tractor',base:25,owned:0,cost:1000},
+  drone:{name:'Drone',base:100,owned:0,cost:5000},
+  ai:{name:'AI Farm',base:500,owned:0,cost:25000}
+};
+const crops=[];
+const particles=[];
+KM.init({slug:'neon-farm',title:'Neon Farm',tagline:'Click to harvest',controls:'Mouse or Touch'});
+function load(){
+  const d=localStorage.getItem('neonfarm');
+  if(d){
+    const p=JSON.parse(d);
+    Object.assign(S,p);
+    Object.keys(U).forEach(k=>Object.assign(U[k],p[k]||{}));
+  }
+  const away=(Date.now()-S.lastTick)/1000;
+  const rate=calcRate();
+  S.gold+=rate*away;
+  S.total+=rate*away;
+}
+function save(){
+  S.lastSave=Date.now();
+  S.lastTick=Date.now();
+  const d={...S};
+  Object.keys(U).forEach(k=>d[k]=U[k]);
+  localStorage.setItem('neonfarm',JSON.stringify(d));
+  KM.trackScore(S.total);
+}
+function calcRate(){
+  const mult=1+S.stars*0.1;
+  return (U.auto.owned*U.auto.base+U.sprinkler.owned*U.sprinkler.base+U.tractor.owned*U.tractor.base+U.drone.owned*U.drone.base+U.ai.owned*U.ai.base)*mult;
+}
+function earn(amt){
+  const mult=1+S.stars*0.1;
+  const gain=amt*mult;
+  S.gold+=gain;
+  S.total+=gain;
+  KJ.hit();
+}
+function buy(what){
+  const u=U[what];
+  if(S.gold>=u.cost){
+    S.gold-=u.cost;
+    u.owned++;
+    u.cost=Math.floor(u.cost*1.15);
+    updateShop();
+    KJ.chime();
+  }
+}
+function updateShop(){
+  const shop=document.getElementById('shop');
+  shop.innerHTML='';
+  Object.keys(U).forEach(k=>{
+    const u=U[k];
+    const div=document.createElement('div');
+    div.className='shopItem';
+    div.innerHTML=`${u.name}<br>${u.owned} - ${format(u.cost)}g`;
+    div.onclick=()=>buy(k);
+    shop.appendChild(div);
+  });
+}
+function format(n){
+  if(n<1000)return Math.floor(n);
+  if(n<1e6)return (n/1e3).toFixed(1)+'K';
+  if(n<1e9)return (n/1e6).toFixed(1)+'M';
+  return (n/1e9).toFixed(1)+'B';
+}
+function addParticle(x,y){
+  for(let i=0;i<10;i++){
+    particles.push({x,y,vx:(Math.random()-0.5)*4,vy:-Math.random()*3-1,life:30});
+  }
+  KJ.particles(x, y, 14, '#ffff00');
+}
+function draw(){
+  if(KM.isPaused())return;
+  ctx.fillStyle='#000';
+  ctx.fillRect(0,0,c.width,c.height);
+  // draw crops
+  crops.forEach((cr,i)=>{
+    cr.grow+=0.01;
+    if(cr.grow>1)cr.grow=1;
+    ctx.save();
+    ctx.translate(cr.x,cr.y);
+    ctx.fillStyle=`rgba(0,255,0,${cr.grow*0.8})`;
+    ctx.shadowBlur=10;
+    ctx.shadowColor='#0f0';
+    ctx.fillRect(-10,-10-cr.grow*10,20,20);
+    ctx.restore();
+  });
+  // particles
+  particles.forEach((p,i)=>{
+    p.x+=p.vx;
+    p.y+=p.vy;
+    p.vy+=0.2;
+    p.life--;
+    ctx.fillStyle=`rgba(255,255,0,${p.life/30})`;
+    ctx.fillRect(p.x,p.y,4,4);
+    if(p.life<=0)particles.splice(i,1);
+  });
+  // hud
+  document.getElementById('gold').textContent=format(S.gold);
+  document.getElementById('gps').textContent=format(calcRate());
+  document.getElementById('total').textContent=format(S.total);
+  document.getElementById('stars').textContent=S.stars.toFixed(2);
+  document.getElementById('mult').textContent=(1+S.stars*0.1).toFixed(2);
+  // prestige
+  if(S.gold>=1e6){
+    document.getElementById('prestigeBtn').style.display='block';
+  }
+}
+function prestige(){
+  if(S.gold<1e6)return;
+  const stars=Math.log10(S.gold);
+  S.stars+=stars;
+  S.gold=0;
+  S.total=0;
+  Object.keys(U).forEach(k=>{
+    U[k].owned=0;
+    U[k].cost=U[k].cost*0.5;
+  });
+  U.click.owned=1;
+  save();
+  updateShop();
+  document.getElementById('prestigeBtn').style.display='none';
+  KM.gameOver(S.total, {cause:'prestige', onRetry:load});
+  KJ.levelUp();
+}
+c.onclick=e=>{
+  const rect=c.getBoundingClientRect();
+  const x=e.clientX-rect.left;
+  const y=e.clientY-rect.top;
+  earn(U.click.owned*U.click.base);
+  addParticle(x,y);
+  // add crop
+  crops.push({x,y,grow:0});
+  if(crops.length>50)crops.shift();
+  KJ.shake(6, 150);
+};
+document.getElementById('prestigeBtn').onclick=prestige;
+load();
+updateShop();
+setInterval(save,30000);
+setInterval(()=>earn(calcRate()/10),100);
+setInterval(draw,16);
+</script>
+</body>
+</html>

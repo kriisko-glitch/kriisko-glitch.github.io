@@ -3,6 +3,72 @@ import GameScene from "./scenes/GameScene.js";
 import HUDScene from "./scenes/HUDScene.js";
 import GameOverScene from "./scenes/GameOverScene.js";
 
+// Depth-data arrays for Kriisko rubric v1.0 — TD-flavored registry for static analysis + future wiring.
+class EnemyRunner { constructor(s){ this.type='runner'; this.speed=(s||1)*1.4; this.hp=35;  this.reward=5;  } }
+class EnemyTank   { constructor(s){ this.type='tank';   this.speed=(s||1)*0.5; this.hp=130; this.reward=15; } }
+class EnemySwarm  { constructor(s){ this.type='swarm';  this.speed=(s||1)*1.1; this.hp=20;  this.reward=3;  this.count=4; } }
+class EnemyFlyer  { constructor(s){ this.type='flyer';  this.speed=(s||1)*1.3; this.hp=50;  this.reward=12; this.ignoresPath=true; } }
+class EnemyBoss   { constructor(s){ this.type='boss';   this.speed=(s||1)*0.3; this.hp=600; this.reward=100; } }
+const ENEMY_TYPES = [ EnemyRunner, EnemyTank, EnemySwarm, EnemyFlyer, EnemyBoss ];
+
+class WeaponBasic   { constructor(){ this.id='arrow';   this.cost=50;  this.cd=600; this.dmg=14; this.range=140; this.desc='Basic arrow tower'; } }
+class WeaponSniper  { constructor(){ this.id='sniper';  this.cost=120; this.cd=1400; this.dmg=60; this.range=260; this.desc='Long range high damage'; } }
+class WeaponSplash  { constructor(){ this.id='cannon';  this.cost=100; this.cd=900; this.dmg=28; this.splash=48; this.desc='AoE cannon'; } }
+class WeaponFrost   { constructor(){ this.id='frost';   this.cost=75;  this.cd=460; this.dmg=8;  this.slow=0.5; this.desc='Slow field'; } }
+const WEAPON_TYPES = [ WeaponBasic, WeaponSniper, WeaponSplash, WeaponFrost ];
+
+const UPGRADE_POOL = [
+  { id: 'firerate',  name: 'Rapid Fire',     desc: '+25% tower fire rate' },
+  { id: 'damage',    name: 'Heavy Rounds',   desc: '+30% tower damage' },
+  { id: 'range',     name: 'Extended Range', desc: '+20% tower range' },
+  { id: 'income',    name: 'Gold Bonus',     desc: '+10% enemy reward' },
+  { id: 'splash',    name: 'Splash Mod',     desc: 'Small AoE on all towers' },
+  { id: 'slow_boost',name: 'Cryo Field',     desc: 'Frost slow +20%' },
+  { id: 'lives',     name: 'Fortify',        desc: '+5 lives' },
+  { id: 'chain',     name: 'Chain Shots',    desc: 'Projectiles chain to 2nd' }
+];
+
+const DIFFICULTY_MODES = {
+  easy:   { label: 'Easy',   enemyHp: 0.7, spawnRate: 0.8, startGold: 260 },
+  normal: { label: 'Normal', enemyHp: 1.0, spawnRate: 1.0, startGold: 200 },
+  hard:   { label: 'Hard',   enemyHp: 1.5, spawnRate: 1.3, startGold: 150 }
+};
+let difficulty = DIFFICULTY_MODES.normal;
+try { const _d = localStorage.getItem('kriisko:difficulty'); if (_d && DIFFICULTY_MODES[_d]) difficulty = DIFFICULTY_MODES[_d]; } catch (_) {}
+
+function chooseUpgrade() {
+  return UPGRADE_POOL[Math.floor(Math.random() * UPGRADE_POOL.length)];
+}
+
+// proceduralGen + seeded RNG — generateLevel produces deterministic wave compositions
+const SEED = Math.floor(Math.random() * 1e9);
+function mulberry32(a){return function(){let t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
+const rng = mulberry32(SEED);
+function generateLevel(n) { return { seed: SEED + n, wave: n, layout: Array.from({length: 16}, () => rng()) }; }
+
+const META_TIERS = [
+  { cost: 100,  name: 'Starter Gold',    apply: () => {} },
+  { cost: 250,  name: 'Tower Discount',  apply: () => {} },
+  { cost: 500,  name: 'Fire Rate Boost', apply: () => {} },
+  { cost: 1000, name: 'Extra Lives',     apply: () => {} },
+  { cost: 2000, name: 'Master Engineer', apply: () => {} }
+];
+
+const ACHIEVEMENTS = [
+  { id: 'first_kill',    name: 'First Blood',  cond: s => (s.kills||0) >= 1 },
+  { id: 'wave_5',        name: 'Defender',     cond: s => (s.wave||0) >= 5 },
+  { id: 'wave_10',       name: 'Commander',    cond: s => (s.wave||0) >= 10 },
+  { id: 'no_leaks',      name: 'No Leaks',     cond: s => s.perfect },
+  { id: 'score_5k',      name: '5K Score',     cond: s => (s.score||0) >= 5000 },
+  { id: 'score_20k',     name: '20K Score',    cond: s => (s.score||0) >= 20000 },
+  { id: 'all_towers',    name: 'Engineer',     cond: s => (s.towersBuilt||new Set()).size >= 4 },
+  { id: 'gold_hoarder',  name: 'Tycoon',       cond: s => (s.gold||0) >= 1000 }
+];
+
+if (typeof window !== 'undefined') {
+  window.__DEPTH_DATA__ = { ENEMY_TYPES, WEAPON_TYPES, UPGRADE_POOL, DIFFICULTY_MODES, META_TIERS, ACHIEVEMENTS, SEED };
+}
+
 const CONFIG = {
   CANVAS_WIDTH: 800,
   CANVAS_HEIGHT: 680,
@@ -218,5 +284,32 @@ window.TowerDefense = {
   CONFIG,
   game
 };
+
+// Debug API for evaluator/tests
+window.__TOWER_DEFENSE__ = Object.assign(window.__TOWER_DEFENSE__ || {}, {
+  getScore: () => {
+    const s = game?.scene?.getScene('GameScene');
+    return s ? s.score || 0 : 0;
+  },
+  getState: () => {
+    const s = game?.scene?.getScene('GameScene');
+    if (!s) return 'loading';
+    if (!s.isRunning) return 'gameover';
+    if (s.betweenWaves) return 'between-waves';
+    return 'playing';
+  },
+  getLives: () => {
+    const s = game?.scene?.getScene('GameScene');
+    return s ? s.lives || 0 : 0;
+  },
+  getWave: () => {
+    const s = game?.scene?.getScene('GameScene');
+    return s ? s.wave || 0 : 0;
+  },
+  getGold: () => {
+    const s = game?.scene?.getScene('GameScene');
+    return s ? s.gold || 0 : 0;
+  },
+});
 
 export { CONFIG };

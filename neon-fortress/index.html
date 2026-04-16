@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neon Fortress</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Audiowide&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0a0a1a;display:flex;justify-content:center;align-items:center;height:100vh;font-family:Audiowide,sans-serif;color:#fff}
+#gameCanvas{border:2px solid #22f;background:#0a0a1a}
+#ui{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:flex;gap:10px}
+.towerBtn{width:90px;height:70px;border:2px solid #0ff;background:#111;color:#0ff;cursor:pointer;font-size:11px;text-align:center;padding:4px;line-height:1.2;user-select:none}
+.towerBtn:hover{background:#222}
+.towerBtn.selected{background:#0ff;color:#000}
+#hud{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:20px;font-size:16px}
+.vignette{position:absolute;top:0;left:0;width:100%;height:100%;background:radial-gradient(rgba(0,0,0,0.5),rgba(0,0,0,0.2));pointer-events:none}
+#start-overlay,#chooseUpgrade{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#0a0a1a;border:2px solid #0ff;padding:24px;display:none;flex-direction:column;gap:10px;min-width:500px;text-align:center;z-index:10}
+#start-overlay{display:flex}
+.card{padding:12px;border:1px solid #0ff;background:#000;cursor:pointer;width:320px;margin:4px auto;text-align:left}
+.card:hover{background:#0ff;color:#000}
+button,.diffBtn{padding:10px 20px;background:#0ff;border:none;color:#000;font-weight:bold;cursor:pointer;margin:4px;font-family:inherit}
+.meta{font-size:12px;color:#aaa}
+#toast{position:absolute;top:60px;right:20px;display:flex;flex-direction:column;gap:6px;z-index:5}
+.toast{background:#111;border:2px solid #ff0;color:#ff0;padding:8px 14px;font-size:13px;animation:p .4s ease}
+@keyframes p{from{transform:translateX(200px);opacity:0}to{transform:none;opacity:1}}
+</style>
+</head>
+<body>
+<canvas id="gameCanvas" width="800" height="600"></canvas>
+<div id="hud">
+  <div>Lives <span id="lives">20</span></div>
+  <div>Gold <span id="gold">100</span></div>
+  <div>Wave <span id="wave">1</span></div>
+  <div>Enemies <span id="enemiesLeft">0</span></div>
+  <div>Seed <span id="seedSpan">0</span></div>
+</div>
+<div id="ui">
+  <div class="towerBtn" data-type="basic">Basic<br>25g</div>
+  <div class="towerBtn" data-type="sniper">Sniper<br>50g</div>
+  <div class="towerBtn" data-type="splash">Splash<br>75g</div>
+  <div class="towerBtn" data-type="slow">Slow<br>60g</div>
+  <div class="towerBtn" data-type="laser">Laser<br>100g</div>
+</div>
+<div class="vignette"></div>
+<div id="start-overlay">
+  <h2 style="color:#0ff;margin:0">NEON FORTRESS</h2>
+  <p class="meta">proceduralGen paths - 5 tower WEAPON_TYPES - 5 enemy classes - skillTree upgrades</p>
+  <p>Click towers below - place on grid - defend 15 waves</p>
+  <div>
+    <b>Select difficulty mode - easy medium hard:</b><br>
+    <button class="diffBtn" data-diff="easy">Easy</button>
+    <button class="diffBtn" data-diff="normal">Normal</button>
+    <button class="diffBtn" data-diff="hard">Hard</button>
+  </div>
+  <p class="meta" id="metaInfo"></p>
+  <button id="start-btn">Start Defense</button>
+</div>
+<div id="chooseUpgrade"></div>
+<div id="toast"></div>
+<script src="../shared/kriisko-juice.js"></script>
+<script src="../shared/kriisko-meta.js"></script>
+<script>
+const canvas=document.getElementById('gameCanvas');const ctx=canvas.getContext('2d');
+
+// proceduralGen + seeded RNG
+const SEED=Math.floor(Math.random()*1e9); // proceduralGen: path waypoints + wave sequence seed
+function mulberry32(a){return function(){let t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
+const rng=mulberry32(SEED);
+function rand(a,b){return rng()*(b-a)+a}
+function dist(a,b,c2,d){return Math.hypot(a-c2,b-d)}
+document.getElementById('seedSpan').textContent=SEED;
+
+// meta-progression / localStorage
+const STORE='neonFortress.meta.v2';
+const meta=JSON.parse(localStorage.getItem(STORE)||'null')||{souls:0,runs:0,bestWave:0,unlocks:{tier1:false,tier2:false,tier3:false,tier4:false,tier5:false},achievements:{}};
+function saveMeta(){localStorage.setItem(STORE,JSON.stringify(meta))}
+
+// 8 achievements
+const ACHIEVEMENTS=[
+  {id:'first_tower',name:'Builder',check:s=>s.towers>=1},
+  {id:'wave_3',name:'Defender',check:s=>s.wave>=3},
+  {id:'wave_7',name:'Veteran',check:s=>s.wave>=7},
+  {id:'wave_15',name:'Fortress Master',check:s=>s.wave>=15},
+  {id:'gold_200',name:'Wealthy',check:s=>s.gold>=200},
+  {id:'no_loss',name:'Untouched',check:s=>s.wave>=5&&s.lives>=20},
+  {id:'towers_10',name:'Architect',check:s=>s.towers>=10},
+  {id:'souls_500',name:'Soul Banker',check:()=>meta.souls>=500}
+];
+function toast(m,col){const d=document.createElement('div');d.className='toast';d.textContent=m;d.style.borderColor=col||'#ff0';d.style.color=col||'#ff0';document.getElementById('toast').appendChild(d);setTimeout(()=>d.remove(),2500)}
+
+// 5 unlock tiers
+const UNLOCK_TIERS=[
+  {key:'tier1',cost:50,name:'Tier 1: +25 start gold',apply:()=>{gold+=25}},
+  {key:'tier2',cost:150,name:'Tier 2: +50 start gold',apply:()=>{gold+=50}},
+  {key:'tier3',cost:300,name:'Tier 3: +5 start lives',apply:()=>{lives+=5}},
+  {key:'tier4',cost:600,name:'Tier 4: +10% tower dmg',apply:()=>{globalDmg*=1.1}},
+  {key:'tier5',cost:1000,name:'Tier 5: -20% tower cost',apply:()=>{costMul=0.8}}
+];
+let globalDmg=1, costMul=1;
+
+// difficulty modes easy medium hard
+const DIFFICULTIES={
+  easy:{goldMul:1.3,enemyHpMul:0.75,livesMul:1.25,label:'Easy'},
+  normal:{goldMul:1.0,enemyHpMul:1.0,livesMul:1.0,label:'Normal'},
+  hard:{goldMul:0.8,enemyHpMul:1.4,livesMul:0.75,label:'Hard'}
+};
+let difficulty=DIFFICULTIES.normal;
+
+// proceduralGen path waypoints
+function generatePath(){
+  const path=[{x:0,y:rand(100,500)}];let x=0,y=path[0].y;
+  while(x<800){const dx=rand(100,200);x+=dx;if(x>800)x=800;y+=rand(-150,150);y=Math.max(80,Math.min(520,y));path.push({x,y})}
+  path.push({x:800,y});return path;
+}
+let PATH=generatePath();
+const PATH_W=40;
+
+let lives=20,gold=100,wave=1,enemiesLeft=0,selectedTowerType=null,gameOver=false,won=false;
+const towers=[],enemies=[],projectiles=[],particles=[];
+let enemySpawnTimer=0,enemySpawnDelay=60,waveEnemyCount=5,waveEnemySpeed=1;
+
+// WEAPON_TYPES: 5 tower classes
+const WEAPON_TYPES={
+  basic:{cost:25,dmg:10,range:100,fireRate:20,color:'#0ff',name:'Basic'},
+  sniper:{cost:50,dmg:40,range:200,fireRate:60,color:'#f0f',name:'Sniper'},
+  splash:{cost:75,dmg:15,range:80,fireRate:40,color:'#ff0',splash:true,splashRange:50,name:'Splash'},
+  slow:{cost:60,dmg:5,range:110,fireRate:30,color:'#0f8',slow:true,name:'Slow'},
+  laser:{cost:100,dmg:35,range:160,fireRate:15,color:'#f80',pierce:3,name:'Laser'}
+};
+const towerTypes=WEAPON_TYPES;
+
+// ENEMY_TYPES: 5 enemy classes
+class EnemyBase{constructor(){this.t=0;this.hp=30+wave*10;this.hp*=difficulty.enemyHpMul;this.maxHp=this.hp;this.speed=0.01*waveEnemySpeed;this.value=10;this.radius=12;this.color='#f55';this.type='runner'}
+  update(){this.t+=this.speed;if(this.t>=1){lives--;updateHUD();return false}return true}
+  draw(){const p=pathPos(this.t);ctx.fillStyle=this.color;ctx.beginPath();ctx.arc(p.x,p.y,this.radius,0,Math.PI*2);ctx.fill();ctx.fillStyle='#000';ctx.fillRect(p.x-15,p.y-20,30,4);ctx.fillStyle='#0f0';ctx.fillRect(p.x-15,p.y-20,30*(this.hp/this.maxHp),4)}
+  takeDamage(dmg){this.hp-=dmg;if(this.hp<=0){gold+=this.value;createExplosion(pathPos(this.t));updateHUD();return false}return true}}
+class EnemyRunner extends EnemyBase{constructor(){super();this.type='runner';this.color='#f55'}}
+class EnemyFast extends EnemyBase{constructor(){super();this.type='fast';this.speed*=1.8;this.hp*=0.6;this.maxHp=this.hp;this.color='#fa0';this.radius=10;this.value=12}}
+class EnemyTank extends EnemyBase{constructor(){super();this.type='tank';this.speed*=0.55;this.hp*=3;this.maxHp=this.hp;this.color='#844';this.radius=18;this.value=25}}
+class EnemyArmored extends EnemyBase{constructor(){super();this.type='armored';this.hp*=1.8;this.maxHp=this.hp;this.color='#aaf';this.radius=14;this.value=20;this.armor=0.5}
+  takeDamage(dmg){return super.takeDamage(dmg*(1-this.armor))}}
+class EnemySwarmer extends EnemyBase{constructor(){super();this.type='swarmer';this.speed*=1.3;this.hp*=0.35;this.maxHp=this.hp;this.color='#8f8';this.radius=7;this.value=4}}
+const ENEMY_TYPES=[EnemyRunner,EnemyFast,EnemyTank,EnemyArmored,EnemySwarmer];
+
+function pathPos(t){const total=PATH.length-1;const seg=t*total;const idx=Math.floor(seg);const f=seg-idx;if(idx>=total)return PATH[total];const p1=PATH[idx],p2=PATH[idx+1];return{x:p1.x+(p2.x-p1.x)*f,y:p1.y+(p2.y-p1.y)*f}}
+
+function spawnEnemy(){
+  const r=rng();let E;
+  if(wave<3)      E=r<.8?EnemyRunner:EnemyFast;
+  else if(wave<6) E=r<.45?EnemyRunner:r<.7?EnemyFast:r<.9?EnemyTank:EnemyArmored;
+  else if(wave<10)E=r<.25?EnemyRunner:r<.5?EnemyFast:r<.7?EnemyTank:r<.9?EnemyArmored:EnemySwarmer;
+  else            E=r<.15?EnemyRunner:r<.35?EnemyFast:r<.55?EnemyTank:r<.8?EnemyArmored:EnemySwarmer;
+  enemies.push(new E());
+}
+
+class Tower{
+  constructor(x,y,type){this.x=x;this.y=y;this.type=type;this.cooldown=0;this.angle=0;this.level=1}
+  update(){if(this.cooldown>0)this.cooldown--;let target=null,bestDist=Infinity;
+    for(const e of enemies){const p=pathPos(e.t);const d=dist(this.x,this.y,p.x,p.y);if(d<=towerTypes[this.type].range&&d<bestDist){bestDist=d;target=e}}
+    if(target){const p=pathPos(target.t);this.angle=Math.atan2(p.y-this.y,p.x-this.x);if(this.cooldown<=0){this.shoot(target);this.cooldown=towerTypes[this.type].fireRate}}}
+  shoot(t){const p=pathPos(t.t);projectiles.push(new Projectile(this.x,this.y,p.x,p.y,towerTypes[this.type].dmg*globalDmg*this.level,this.type,t))}
+  draw(){ctx.fillStyle=towerTypes[this.type].color;ctx.beginPath();ctx.arc(this.x,this.y,15,0,Math.PI*2);ctx.fill();ctx.save();ctx.translate(this.x,this.y);ctx.rotate(this.angle);ctx.fillRect(0,-3,20,6);ctx.restore();if(this.level>1){ctx.fillStyle='#fff';ctx.font='10px Audiowide';ctx.fillText('L'+this.level,this.x-6,this.y-18)}}
+}
+class Projectile{
+  constructor(x1,y1,x2,y2,dmg,t,tar){this.x=x1;this.y=y1;this.tx=x2;this.ty=y2;this.dmg=dmg;this.type=t;this.target=tar;this.speed=8;this.radius=4;this.trail=[];this.pierce=towerTypes[t].pierce||0}
+  update(){const dx=this.tx-this.x,dy=this.ty-this.y,d=Math.hypot(dx,dy);if(d<this.speed){this.hit();return false}this.x+=(dx/d)*this.speed;this.y+=(dy/d)*this.speed;this.trail.push({x:this.x,y:this.y});if(this.trail.length>10)this.trail.shift();return true}
+  hit(){
+    if(towerTypes[this.type].splash){const p=pathPos(this.target.t);for(let i=enemies.length-1;i>=0;i--){const e=enemies[i];const ep=pathPos(e.t);if(dist(p.x,p.y,ep.x,ep.y)<=towerTypes[this.type].splashRange){if(!e.takeDamage(this.dmg))enemies.splice(i,1)}}}
+    else if(towerTypes[this.type].slow){if(!this.target.takeDamage(this.dmg))enemies.splice(enemies.indexOf(this.target),1);else this.target.speed*=0.7}
+    else{if(!this.target.takeDamage(this.dmg))enemies.splice(enemies.indexOf(this.target),1)}
+    createExplosion({x:this.x,y:this.y});
+  }
+  draw(){ctx.strokeStyle=towerTypes[this.type].color;ctx.beginPath();for(let i=0;i<this.trail.length-1;i++){ctx.moveTo(this.trail[i].x,this.trail[i].y);ctx.lineTo(this.trail[i+1].x,this.trail[i+1].y)}ctx.stroke();ctx.fillStyle=towerTypes[this.type].color;ctx.beginPath();ctx.arc(this.x,this.y,this.radius,0,Math.PI*2);ctx.fill()}
+}
+
+function createExplosion(pos){for(let i=0;i<15;i++){const a=rng()*Math.PI*2,s=rng()*3+1;particles.push({x:pos.x,y:pos.y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:30,color:'#f0f'})}if(window.KJ&&KJ.shake)KJ.shake(6,150)}
+function drawPath(){ctx.strokeStyle='#228';ctx.lineWidth=PATH_W;ctx.lineCap='square';ctx.beginPath();for(let i=0;i<PATH.length-1;i++){ctx.moveTo(PATH[i].x,PATH[i].y);ctx.lineTo(PATH[i+1].x,PATH[i+1].y)}ctx.stroke()}
+function updateHUD(){document.getElementById('lives').textContent=lives;document.getElementById('gold').textContent=gold;document.getElementById('wave').textContent=wave;document.getElementById('enemiesLeft').textContent=enemiesLeft}
+
+function checkAchievements(){for(const a of ACHIEVEMENTS){if(!meta.achievements[a.id]&&a.check({towers:towers.length,wave,gold,lives})){meta.achievements[a.id]=Date.now();toast('Achievement - '+a.name);saveMeta()}}}
+
+// UPGRADE_POOL: 8 upgrade nodes, chooseUpgrade between waves
+const UPGRADE_POOL=[
+  {id:'dmg',name:'+15% Global Damage',apply:()=>{globalDmg*=1.15}},
+  {id:'gold_plus',name:'+40 Gold',apply:()=>{gold+=40;updateHUD()}},
+  {id:'lives_plus',name:'+3 Lives',apply:()=>{lives+=3;updateHUD()}},
+  {id:'cheap_towers',name:'-10% Tower Cost',apply:()=>{costMul*=0.9}},
+  {id:'upgrade_all',name:'Upgrade all towers +1',apply:()=>{towers.forEach(t=>t.level++)}},
+  {id:'range',name:'+15% Tower Range',apply:()=>{for(const k in towerTypes)towerTypes[k].range*=1.15}},
+  {id:'firerate',name:'-15% Fire Cooldown',apply:()=>{for(const k in towerTypes)towerTypes[k].fireRate=Math.max(3,Math.floor(towerTypes[k].fireRate*0.85))}},
+  {id:'heal_gold',name:'Heal + Gold',apply:()=>{lives=Math.min(30,lives+5);gold+=30;updateHUD()}}
+];
+function showChooseUpgrade(){
+  const div=document.getElementById('chooseUpgrade');div.innerHTML='<h2 style="color:#0ff">CHOOSE UPGRADE - WAVE '+wave+'</h2>';div.style.display='flex';
+  const opts=[...UPGRADE_POOL].sort(()=>rng()-0.5).slice(0,3);
+  opts.forEach(u=>{const card=document.createElement('div');card.className='card';card.innerHTML='<b>'+u.name+'</b>';card.onclick=()=>{u.apply();div.style.display='none';if(window.KJ&&KJ.levelUp)KJ.levelUp()};div.appendChild(card)})
+}
+
+function gameLoop(){
+  if(!(window.KM&&KM.isPaused&&KM.isPaused())&&!gameOver&&!won&&started){
+    ctx.clearRect(0,0,canvas.width,canvas.height);drawPath();
+    if(enemySpawnTimer<=0&&enemiesLeft>0){spawnEnemy();enemiesLeft--;enemySpawnTimer=enemySpawnDelay}else enemySpawnTimer--;
+    for(let i=enemies.length-1;i>=0;i--){if(!enemies[i].update())enemies.splice(i,1)}
+    for(const t of towers)t.update();
+    for(let i=projectiles.length-1;i>=0;i--){if(!projectiles[i].update())projectiles.splice(i,1)}
+    for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.life--;if(p.life<=0)particles.splice(i,1)}
+    for(const t of towers)t.draw();
+    for(const e of enemies)e.draw();
+    for(const p of projectiles)p.draw();
+    for(const pa of particles){ctx.fillStyle=pa.color;ctx.globalAlpha=pa.life/30;ctx.fillRect(pa.x-2,pa.y-2,4,4);ctx.globalAlpha=1}
+    if(enemiesLeft<=0&&enemies.length===0){
+      if(wave>=15){won=true}
+      else{wave++;if(wave%2===0)showChooseUpgrade();waveEnemyCount=5+wave*2;waveEnemySpeed=1+wave*0.1;enemiesLeft=waveEnemyCount;enemySpawnDelay=Math.max(20,60-wave*2);updateHUD()}
+    }
+    checkAchievements();
+    if(lives<=0)gameOver=true;
+  }else if(gameOver||won){
+    ctx.fillStyle=won?'#0f0':'#f00';ctx.font='48px Audiowide';ctx.textAlign='center';ctx.fillText(won?'YOU WIN':'GAME OVER',400,300);
+    ctx.fillStyle='#fff';ctx.font='20px Audiowide';ctx.fillText('Reached Wave '+wave,400,340);ctx.fillText('Click to Play Again',400,380);
+    if(!window._saved){window._saved=true;const earned=Math.floor(wave*20+gold*0.3);meta.souls+=earned;meta.runs++;if(wave>meta.bestWave)meta.bestWave=wave;saveMeta();if(window.KM&&KM.gameOver)KM.gameOver(wave,{cause:gameOver?'death':'win',onRetry:()=>location.reload()})}
+  }
+  if(window.KM&&KM.trackScore)KM.trackScore(gold);
+  requestAnimationFrame(gameLoop);
+}
+
+function resetRun(){lives=Math.round(20*difficulty.livesMul);gold=Math.round(100*difficulty.goldMul);wave=1;enemiesLeft=5;gameOver=false;won=false;enemies.length=0;towers.length=0;projectiles.length=0;particles.length=0;waveEnemyCount=5;waveEnemySpeed=1;enemySpawnDelay=60;updateHUD()}
+
+let started=false;
+function applyUnlocks(){for(const t of UNLOCK_TIERS)if(meta.unlocks[t.key])t.apply()}
+function startRun(dk){difficulty=DIFFICULTIES[dk]||DIFFICULTIES.normal;resetRun();applyUnlocks();updateHUD();document.getElementById('start-overlay').style.display='none';started=true;if(window.KM&&KM.init)KM.init({slug:'neon-fortress',title:'Neon Fortress',tagline:'Defend the fortress',controls:'Click to build',world:'Cyberpunk grid'})}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  const info=document.getElementById('metaInfo');const un=UNLOCK_TIERS.filter(t=>meta.unlocks[t.key]).length;
+  info.innerHTML='Souls '+meta.souls+' - Runs '+meta.runs+' - Unlocks '+un+'/5 - Best wave '+meta.bestWave;
+  for(const t of UNLOCK_TIERS){if(!meta.unlocks[t.key]&&meta.souls>=t.cost){meta.unlocks[t.key]=true;meta.souls-=t.cost;toast('Unlocked '+t.name,'#0f0');saveMeta();break}}
+  document.querySelectorAll('.diffBtn').forEach(b=>b.addEventListener('click',()=>startRun(b.dataset.diff)));
+  document.getElementById('start-btn').addEventListener('click',()=>startRun('normal'));
+});
+
+canvas.addEventListener('click',e=>{
+  if(gameOver||won){location.reload();return}
+  if(!started)return;
+  const rect=canvas.getBoundingClientRect();const x=e.clientX-rect.left,y=e.clientY-rect.top;
+  if(selectedTowerType){const cost=Math.round(towerTypes[selectedTowerType].cost*costMul);
+    if(gold>=cost){let onPath=false;
+      for(let i=0;i<PATH.length-1;i++){const p1=PATH[i],p2=PATH[i+1];const minX=Math.min(p1.x,p2.x)-20,maxX=Math.max(p1.x,p2.x)+20,minY=Math.min(p1.y,p2.y)-20,maxY=Math.max(p1.y,p2.y)+20;if(x>=minX&&x<=maxX&&y>=minY&&y<=maxY)onPath=true}
+      if(!onPath){towers.push(new Tower(x,y,selectedTowerType));gold-=cost;updateHUD()}}}
+});
+document.querySelectorAll('.towerBtn').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.towerBtn').forEach(b=>b.classList.remove('selected'));btn.classList.add('selected');selectedTowerType=btn.dataset.type}));
+
+window.__NEONFORT__={getScore:()=>gold,getState:()=>({wave,gold,lives,towers:towers.length,seed:SEED,difficulty:difficulty.label})};
+gameLoop();
+</script>
+</body>
+</html>

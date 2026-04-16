@@ -1,0 +1,194 @@
+export const STORAGE_KEY = 'kriisko_void_drift_high_score';
+
+export const GAME = {
+  WIDTH: 800,
+  HEIGHT: 600,
+  BACKGROUND_COLOR: 0x050510,
+} as const;
+
+export const DEPTH = {
+  STARFIELD_FAR: -30,
+  STARFIELD_MID: -20,
+  STARFIELD_NEAR: -10,
+  PARTICLES: 15,
+  UPGRADES: 18,
+  BULLETS: 20,
+  ENEMIES: 25,
+  PLAYER: 30,
+  ENGINE_TRAIL: 29,
+  HUD: 100,
+  OVERLAY: 200,
+} as const;
+
+export const COLORS = {
+  BG: 0x050510,
+  PLAYER_CYAN: 0x00e5ff,
+  PLAYER_BLUE: 0x3388ff,
+  ENGINE_GLOW: 0x00ccff,
+  BULLET_PLAYER: 0x00ffff,
+  BULLET_ENEMY: 0xff4444,
+  DRONE_COLOR: 0xff3eb5,
+  BRUISER_COLOR: 0x4fe070,
+  CRUISER_COLOR: 0xffa500,
+  UPGRADE_GLOW: 0xffc107,
+  SHIELD_COLOR: 0x22ff88,
+  RAPID_FIRE_COLOR: 0xff4444,
+  SPREAD_SHOT_COLOR: 0xaa44ff,
+  DAMAGE_COLOR: 0xff8800,
+  SPEED_COLOR: 0x00ccff,
+  HUD_PANEL: 0x0a0a20,
+  HUD_ACCENT: 0x00e5ff,
+  HP_BAR_BG: 0x1a1a3a,
+  HP_BAR_FILL: 0x00ff88,
+  HP_BAR_LOW: 0xff4444,
+  WHITE: 0xffffff,
+  WAVE_TEXT: 0x00e5ff,
+  EXPLOSION_INNER: 0xffffff,
+  EXPLOSION_OUTER: 0xff8800,
+  STAR_FAR: 0x6688cc,
+  STAR_MID: 0x99aadd,
+  STAR_NEAR: 0xffffff,
+} as const;
+
+export const PLAYER = {
+  MAX_HP: 100,
+  SPEED: 250,
+  MAX_SPEED: 300,
+  ACCELERATION: 800,
+  DRAG: 400,
+  FIRE_RATE_MS: 250,
+  BULLET_SPEED: 500,
+  BULLET_DAMAGE: 20,
+  INVINCIBILITY_MS: 3000,
+  HIT_FLASH_MS: 100,
+  PICKUP_RADIUS: 30,
+  SHIP_WIDTH: 28,
+  SHIP_HEIGHT: 36,
+  MAX_BULLETS_ON_SCREEN: 3,
+} as const;
+
+export const ENEMIES = {
+  DRONE: {
+    HP: 30,
+    SPEED: 200,
+    RAM_DAMAGE: 15,
+    POINTS: 10,
+    DROP_CHANCE: 0.4,
+    SIZE: 18,
+  },
+  BRUISER: {
+    HP: 150,
+    SPEED: 80,
+    RAM_DAMAGE: 40,
+    POINTS: 50,
+    DROP_CHANCE: 0.8,
+    DROP_COUNT: 2,
+    SIZE: 28,
+  },
+  CRUISER: {
+    HP: 80,
+    SPEED: 120,
+    RAM_DAMAGE: 25,
+    POINTS: 100,
+    DROP_CHANCE: 1.0,
+    FIRE_RATE_MS: 2000,
+    BULLET_SPEED: 250,
+    BULLET_DAMAGE: 15,
+    SIZE: 24,
+  },
+} as const;
+
+export const WAVES = {
+  INTERVAL_MS: 60000,
+  ANNOUNCE_DURATION_MS: 2000,
+  SPAWN_MARGIN: 60,
+  SCALE_FACTOR: 1.2,
+  MAX_ENEMIES_ALIVE: 15,
+  ENEMY_SPEED_CAP_WAVE: 5,
+  MIN_SPAWN_INTERVAL_MS: 2000,
+  DEFINITIONS: [
+    { drones: 4, bruisers: 0, cruisers: 0 },
+    { drones: 6, bruisers: 1, cruisers: 0 },
+    { drones: 8, bruisers: 2, cruisers: 0 },
+    { drones: 6, bruisers: 3, cruisers: 1 },
+  ],
+  SURVIVAL_BONUS_PER_SECOND: 10,
+} as const;
+
+export const UPGRADES = {
+  TYPES: ['RAPID_FIRE', 'SPREAD_SHOT', 'SHIELD', 'DAMAGE_BOOST', 'SPEED_BURST'] as const,
+  RAPID_FIRE_MULTIPLIER: 0.75,
+  SPREAD_SHOT_ANGLE_DEG: 15,
+  SHIELD_RESTORE: 30,
+  DAMAGE_BOOST_MULTIPLIER: 1.2,
+  SPEED_BURST_MULTIPLIER: 1.15,
+  ORB_SIZE: 12,
+  ORB_PULSE_SPEED: 0.004,
+  POPUP_DURATION_MS: 1500,
+  MAX_RAPID_FIRE_STACKS: 4,
+  MAX_SPREAD_SHOT_STACKS: 3,
+  MAX_DAMAGE_BOOST_STACKS: 5,
+  MAX_SPEED_BURST_STACKS: 3,
+  MIN_FIRE_RATE_MS: 80,
+  MAX_BULLETS_GLOBAL: 12,
+} as const;
+
+export type UpgradeType = typeof UPGRADES.TYPES[number];
+
+export const PARTICLES = {
+  EXPLOSION_COUNT: 16,
+  EXPLOSION_SPEED_MIN: 80,
+  EXPLOSION_SPEED_MAX: 250,
+  EXPLOSION_LIFESPAN_MS: 500,
+  ENGINE_TRAIL_LIFESPAN_MS: 300,
+  ENGINE_TRAIL_FREQUENCY: 40,
+  BULLET_TRAIL_LIFESPAN_MS: 150,
+} as const;
+
+export const STARFIELD = {
+  FAR_COUNT: 80,
+  FAR_SPEED: 15,
+  FAR_SIZE_MIN: 1,
+  FAR_SIZE_MAX: 2,
+  MID_COUNT: 50,
+  MID_SPEED: 30,
+  MID_SIZE_MIN: 2,
+  MID_SIZE_MAX: 3,
+  NEAR_COUNT: 30,
+  NEAR_SPEED: 50,
+  NEAR_SIZE_MIN: 2,
+  NEAR_SIZE_MAX: 4,
+} as const;
+
+export const CAMERA = {
+  SHAKE_DURATION_MS: 100,
+  SHAKE_INTENSITY: 0.005,
+} as const;
+
+export const UI = {
+  FONT_FAMILY: 'Trebuchet MS, Segoe UI, sans-serif',
+  HP_BAR_WIDTH: 200,
+  HP_BAR_HEIGHT: 14,
+  HP_BAR_X: 10,
+  HP_BAR_Y: 10,
+  SCORE_X: 10,
+  SCORE_Y: 32,
+  WAVE_X: 10,
+  WAVE_Y: 52,
+  TIMER_X: 10,
+  TIMER_Y: 72,
+} as const;
+
+export const AUDIO = {
+  MASTER_GAIN: 0.06,
+  SHOOT_FREQ: 440,
+  SHOOT_DURATION: 0.05,
+  ENEMY_DEATH_FREQ: 200,
+  ENEMY_DEATH_DURATION: 0.2,
+  PLAYER_HIT_FREQ: 80,
+  PLAYER_HIT_DURATION: 0.15,
+  UPGRADE_NOTES: [523, 659, 784],
+  UPGRADE_NOTE_DURATION: 0.1,
+  WAVE_CHORD: [262, 330, 392],
+  WAVE_CHORD_DURATION: 0.3,
+} as const;

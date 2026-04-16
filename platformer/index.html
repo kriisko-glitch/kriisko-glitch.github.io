@@ -29,9 +29,28 @@
   </style>
 </head>
 <body data-mobile-controls="dpad">
+  <div id="diffSelect" style="position:fixed;top:10px;left:10px;z-index:1000;background:rgba(0,0,0,.7);padding:8px;border-radius:4px;color:#fff;font-family:Arial;font-size:13px">
+    Difficulty:
+    <button onclick="window.Platformer&&Platformer.selectMode('easy')">Easy</button>
+    <button onclick="window.Platformer&&Platformer.selectMode('normal')">Normal</button>
+    <button onclick="window.Platformer&&Platformer.selectMode('hard')">Hard</button>
+  </div>
   <div id="game-root"></div>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.87.0/dist/phaser.min.js"></script>
+  <script src="../shared/kriisko-juice.js"></script>
+  <script src="../shared/kriisko-meta.js"></script>
   <script>
+// Initialize Kriisko Meta layer
+if (window.KM) {
+  window.KM.init({
+    slug: 'platformer',
+    title: 'Kriisko Platformer',
+    tagline: 'Run, jump, collect — 3 looping levels with escalating speed',
+    controls: 'A/D or Arrows to move. W/Space/Up to jump (double-jump after 10 coins). P to pause.',
+    world: 'Three zones. Three checkpoints. Spikes, spitters, and gems.'
+  });
+}
+
 class BootScene extends Phaser.Scene {
   constructor() {
     super({ key: "BootScene" });
@@ -622,6 +641,9 @@ class GameScene extends Phaser.Scene {
     if (!this.player || !this.player.body) {
       return;
     }
+    if (window.KM && window.KM.isPaused()) {
+      return;
+    }
 
     this.updateZoneTint();
     this.updateMovingPlatforms();
@@ -810,6 +832,12 @@ class GameScene extends Phaser.Scene {
     coin.disableBody(true, true);
     this.audio.coin();
     this.addScore(window.Platformer.CONFIG.GAMEPLAY.COIN_SCORE);
+    if (window.KJ) {
+      const sx = coin.x - this.cameras.main.scrollX;
+      const sy = coin.y - this.cameras.main.scrollY;
+      window.KJ.particles(sx, sy, 10, '#ffc107');
+      window.KJ.pickup();
+    }
 
     const totalCoins = (this.registry.get("coins") || 0) + 1;
     this.registry.set("coins", totalCoins);
@@ -817,6 +845,10 @@ class GameScene extends Phaser.Scene {
     if (totalCoins >= 10 && !this.registry.get("doubleJumpUnlocked")) {
       this.registry.set("doubleJumpUnlocked", true);
       this.flashMessage("DOUBLE JUMP UNLOCKED!", "#e94560", 1050);
+      if (window.KJ) {
+        window.KJ.levelUp();
+        window.KJ.flash('#4caf50', 120);
+      }
     }
   }
 
@@ -825,6 +857,13 @@ class GameScene extends Phaser.Scene {
     this.audio.gem();
     this.addScore(window.Platformer.CONFIG.GAMEPLAY.GEM_SCORE);
     this.sparkle(gem.x, gem.y, window.Platformer.CONFIG.COLORS.GEM);
+    if (window.KJ) {
+      const sx = gem.x - this.cameras.main.scrollX;
+      const sy = gem.y - this.cameras.main.scrollY;
+      window.KJ.particles(sx, sy, 16, '#00bcd4');
+      window.KJ.chime();
+      window.KJ.flash('#00bcd4', 60);
+    }
   }
 
   sparkle(x, y, tint) {
@@ -863,6 +902,13 @@ class GameScene extends Phaser.Scene {
       this.audio.stomp();
       this.addScore(window.Platformer.CONFIG.GAMEPLAY.STOMP_SCORE);
       this.sparkle(enemy.x, enemy.y, 0xff9955);
+      if (window.KJ) {
+        const sx = enemy.x - this.cameras.main.scrollX;
+        const sy = enemy.y - this.cameras.main.scrollY;
+        window.KJ.shake(8, 180);
+        window.KJ.particles(sx, sy, 16, '#ff9955');
+        window.KJ.hit();
+      }
       return;
     }
 
@@ -882,6 +928,11 @@ class GameScene extends Phaser.Scene {
     const lives = Math.max(0, (this.registry.get("lives") || 0) - 1);
     this.registry.set("lives", lives);
     this.audio.hurt();
+    if (window.KJ) {
+      window.KJ.shake(10, 220);
+      window.KJ.flash('#ff0040', 100);
+      window.KJ.hit();
+    }
 
     this.playerDisabled = true;
     this.player.setVisible(false);
@@ -920,6 +971,10 @@ class GameScene extends Phaser.Scene {
     this.audio.levelClear();
     this.addScore(500 * this.displayLevel);
     this.flashMessage(`LEVEL ${this.displayLevel} CLEAR!`, "#00bcd4", 1200);
+    if (window.KJ) {
+      window.KJ.levelUp();
+      window.KJ.flash('#4caf50', 120);
+    }
 
     this.time.delayedCall(1200, () => {
       this.registry.set("level", this.level + 1);
@@ -930,6 +985,16 @@ class GameScene extends Phaser.Scene {
   gameOver() {
     this.audio.gameOver();
     const score = this.registry.get("score") || 0;
+    if (window.KJ) {
+      window.KJ.shake(12, 300);
+      window.KJ.gameOver();
+    }
+    if (window.KM) {
+      window.KM.gameOver(score, {
+        cause: 'Ran out of lives',
+        onRetry: () => this.scene.start('GameScene', { resetRun: true }),
+      });
+    }
     this.scene.stop("HUDScene");
     this.scene.start("GameOverScene", {
       score,
@@ -950,6 +1015,7 @@ class GameScene extends Phaser.Scene {
         // Ignore storage errors in restricted environments.
       }
     }
+    if (window.KM) window.KM.trackScore(nextScore);
   }
 
   flashMessage(text, color, duration = 900) {
@@ -1321,6 +1387,30 @@ const phaserConfig = {
 };
 
 window.Platformer.game = new Phaser.Game(phaserConfig);
+
+// Debug API for evaluator/tests
+window.__PLATFORMER__ = Object.assign(window.__PLATFORMER__ || {}, {
+  getScore: () => {
+    const s = window.Platformer.game?.scene?.getScene('GameScene');
+    if (!s) return 0;
+    return s.registry?.get('score') || 0;
+  },
+  getState: () => {
+    const s = window.Platformer.game?.scene?.getScene('GameScene');
+    if (!s) return 'loading';
+    if (s.isTransitioning) return 'transition';
+    if (s.playerDisabled) return 'respawning';
+    return 'playing';
+  },
+  getLives: () => {
+    const s = window.Platformer.game?.scene?.getScene('GameScene');
+    return s ? (s.registry?.get('lives') || 0) : 0;
+  },
+  getLevel: () => {
+    const s = window.Platformer.game?.scene?.getScene('GameScene');
+    return s ? (s.registry?.get('level') || 1) : 1;
+  },
+});
 
   </script>
   <script src="../shared/leaderboard.js"></script>

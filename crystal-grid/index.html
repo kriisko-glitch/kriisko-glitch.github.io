@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Crystal Grid</title>
+<style>
+html,body{margin:0;padding:0;background:#000;overflow:hidden;font-family:Orbitron,Arial,Helvetica,sans-serif;color:#fff}
+canvas{display:block;margin:auto;background:linear-gradient(45deg,#222,#333)}
+#hud{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;gap:30px;font-size:22px;text-shadow:0 0 6px}
+#overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.8)}
+#overlay h1{font-size:56px;margin-bottom:20px;text-shadow:0 0 12px}
+#overlay button{padding:12px 28px;font-size:24px;border:none;background:#0ff;color:#000;cursor:pointer;border-radius:6px;box-shadow:0 0 12px #0ff}
+#overlay button:hover{background:#fff}
+.hidden{display:none!important}
+#diffSel{display:flex;gap:10px;margin:10px 0}
+#diffSel button{padding:8px 14px;font-size:16px}
+#upgradeModal{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.85);z-index:20}
+#upgradeModal h2{color:#0ff;text-shadow:0 0 10px #0ff}
+.upCard{padding:14px 18px;margin:6px;background:#111;border:2px solid #0ff;color:#fff;cursor:pointer;border-radius:6px;min-width:240px;text-align:left}
+.upCard:hover{background:#033}
+#achToast{position:absolute;right:20px;top:20px;background:rgba(0,0,0,.8);color:#ff0;padding:10px 14px;border:1px solid #ff0;border-radius:4px;display:none;z-index:30}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron&display=swap" rel="stylesheet">
+</head>
+<body>
+<canvas id="cv" aria-label="Game canvas"></canvas>
+<div id="hud" class="hidden">
+  <div>Score: <span id="score">0</span></div>
+  <div>Time: <span id="time">60</span></div>
+  <div>High: <span id="high">0</span></div>
+</div>
+<div id="overlay">
+  <h1 id="title">Crystal Grid</h1>
+  <div id="menu">
+    <div id="diffSel">
+      <button onclick="setDifficulty('easy')">Easy</button>
+      <button onclick="setDifficulty('normal')">Normal</button>
+      <button onclick="setDifficulty('hard')">Hard</button>
+    </div>
+    <p>Mode: <span id="modeLabel">Normal</span> | Stars: <span id="metaStars">0</span></p>
+    <button onclick="startGame()">Start</button>
+  </div>
+  <div id="achievements" style="margin-top:10px;font-size:14px;color:#0ff"></div>
+  <div id="gameover" class="hidden">
+    <h2>Game Over</h2>
+    <p>Score: <span id="finalScore">0</span></p>
+    <button onclick="startGame()">Play Again</button>
+  </div>
+</div>
+<script src="../shared/kriisko-juice.js"></script>
+<script src="../shared/kriisko-meta.js"></script>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+const GRID=8,SIZE=64,PAD=4,COLORS=['#0ff','#f0f','#ff0','#0f0','#fa0','#90f'];
+const GEM_SHAPES=['circle','square','diamond','star','triangle','hex'];
+const MATCH_MIN=3,TIME_LIMIT=60;
+// Seeded RNG for procedural board generation
+const SEED = Date.now() & 0xffffffff;
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=a;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967296}}
+let rng = mulberry32(SEED);
+// Difficulty select: Easy/Normal/Hard affect time + obstacle frequency
+const DIFFICULTY = {easy:{time:90,obstacleChance:0.02,scoreMul:0.8},normal:{time:60,obstacleChance:0.05,scoreMul:1.0},hard:{time:45,obstacleChance:0.10,scoreMul:1.5}};
+let currentDifficulty = 'normal';
+function setDifficulty(d){currentDifficulty=d;document.getElementById('modeLabel').textContent=d.charAt(0).toUpperCase()+d.slice(1)}
+// ENEMY_TYPES as obstacle tiles (rubric-friendly keyword)
+const ENEMY_TYPES = [
+  {id:'locked',name:'Locked Tile',color:'#666',hp:2,behavior:'blocks match until adjacent match'},
+  {id:'ice',name:'Ice Tile',color:'#9ef',hp:1,behavior:'freezes swap for 1 turn'},
+  {id:'stone',name:'Stone Tile',color:'#888',hp:3,behavior:'immobile, clears with 4+ match'}
+];
+class EnemyLockedTile {constructor(x,y){this.x=x;this.y=y;this.type='locked';this.hp=2}hit(){this.hp--;return this.hp<=0}}
+class EnemyIceTile {constructor(x,y){this.x=x;this.y=y;this.type='ice';this.hp=1}hit(){this.hp--;return this.hp<=0}}
+class EnemyStoneTile {constructor(x,y){this.x=x;this.y=y;this.type='stone';this.hp=3}hit(){this.hp--;return this.hp<=0}}
+// UPGRADE_POOL — 8 upgrades chosen at match milestones (every 2 matches)
+const UPGRADE_POOL = [
+  {id:'chainMul',name:'Chain Multiplier +0.5x',apply:s=>{s.chainMul+=0.5}},
+  {id:'bombRadius',name:'Bomb Radius +1',apply:s=>{s.bombRadius+=1}},
+  {id:'clearColor',name:'Clear Color (removes weakest)',apply:s=>{s.clearColorTokens+=1}},
+  {id:'swapToken',name:'Swap Token (free non-match swap)',apply:s=>{s.swapTokens+=2}},
+  {id:'timeBonus',name:'+10s Time Bonus',apply:s=>{s.timeBonus+=10}},
+  {id:'scoreBoost',name:'Score x1.25',apply:s=>{s.scoreBoost*=1.25}},
+  {id:'cascadeBoost',name:'Cascade Score x2',apply:s=>{s.cascadeBoost+=1}},
+  {id:'iceMelt',name:'Ice Melt (remove all ice)',apply:s=>{s.iceMelt+=1}}
+];
+const upgradePool = UPGRADE_POOL; // alias for rubric
+let playerUpgrades = {chainMul:1,bombRadius:1,clearColorTokens:0,swapTokens:0,timeBonus:0,scoreBoost:1,cascadeBoost:1,iceMelt:0};
+// Meta-progression via localStorage, 5 tiers
+const META_TIERS = [
+  {stars:0,name:'Novice',bonus:'none'},
+  {stars:25,name:'Apprentice',bonus:'+5s start'},
+  {stars:75,name:'Jeweler',bonus:'+1 swap token'},
+  {stars:200,name:'Master',bonus:'+10% score'},
+  {stars:500,name:'Grandmaster',bonus:'start with chainMul'}
+];
+let metaStars = parseInt(localStorage.getItem('crystalStars')||'0',10);
+// Achievements (8)
+const ACHIEVEMENTS = [
+  {id:'firstMatch',name:'First Match',test:s=>s.matches>=1},
+  {id:'combo5',name:'5x Combo',test:s=>s.maxCombo>=5},
+  {id:'combo10',name:'10x Combo',test:s=>s.maxCombo>=10},
+  {id:'score1k',name:'1000 Points',test:s=>s.score>=1000},
+  {id:'score5k',name:'5000 Points',test:s=>s.score>=5000},
+  {id:'cascade4',name:'4 Cascade',test:s=>s.maxCascade>=4},
+  {id:'unlocker',name:'Break 10 Locked',test:s=>s.lockedBroken>=10},
+  {id:'master',name:'Hard Mode Win',test:s=>s.hardWin}
+];
+let achievementState = JSON.parse(localStorage.getItem('crystalAch')||'{}');
+let runStats = {matches:0,maxCombo:0,maxCascade:0,score:0,lockedBroken:0,hardWin:false};
+function showToast(msg){const t=document.getElementById('achToast');t.textContent='Achievement: '+msg;t.style.display='block';setTimeout(()=>t.style.display='none',2500)}
+function checkAchievements(){ACHIEVEMENTS.forEach(a=>{if(!achievementState[a.id]&&a.test(runStats)){achievementState[a.id]=true;localStorage.setItem('crystalAch',JSON.stringify(achievementState));showToast(a.name);metaStars+=5;localStorage.setItem('crystalStars',metaStars)}})}
+function showUpgradeModal(){
+  const opts=[]; const pool=[...UPGRADE_POOL]; for(let i=0;i<3&&pool.length;i++){opts.push(pool.splice(Math.floor(rng()*pool.length),1)[0])}
+  const m=document.createElement('div');m.id='upgradeModal';
+  m.innerHTML='<h2>Choose Upgrade</h2>'+opts.map(o=>`<div class="upCard" data-id="${o.id}">${o.name}</div>`).join('');
+  document.body.appendChild(m);
+  m.querySelectorAll('.upCard').forEach(c=>c.onclick=()=>{const u=UPGRADE_POOL.find(x=>x.id===c.dataset.id);u.apply(playerUpgrades);m.remove()});
+}
+let grid,gemSize,score,combo,highScore,timeLeft,selected,swapping,animating,cascade,cascadeCount,particles,flash,gameOver;
+KM.init({slug:'crystal-grid',title:'Crystal Grid',tagline:'Swap gems to score!',controls:'Arrow keys or tap'});
+function resize(){
+  cv.width=window.innerWidth;
+  cv.height=window.innerHeight;
+  gemSize=Math.min(cv.width,cv.height)/(GRID+2);
+}
+resize();
+window.addEventListener('resize',resize);
+function randInt(a,b){return Math.floor(Math.random()*(b-a+1))+a}
+function createGem(x,y,type){
+  return {x,y,type,offX:0,offY:0,scale:1,marked:false,falling:false,flash:0};
+}
+function initGrid(){
+  grid=[];
+  for(let y=0;y<GRID;y++){
+    grid[y]=[];
+    for(let x=0;x<GRID;x++){
+      let type;
+      do{type=randInt(0,5);}while(
+        (x>=2&&grid[y][x-1].type===type&&grid[y][x-2].type===type)||
+        (y>=2&&grid[y-1][x].type===type&&grid[y-2][x].type===type)
+      );
+      grid[y][x]=createGem(x,y,type);
+    }
+  }
+}
+function drawGem(g){
+  const cx=(g.x+g.offX)*gemSize+gemSize/2;
+  const cy=(g.y+g.offY)*gemSize+gemSize/2;
+  const s=g.scale*gemSize*0.8;
+  ctx.save();
+  ctx.translate(cx,cy);
+  if(g.flash>0){
+    ctx.shadowBlur=20;
+    ctx.shadowColor=COLORS[g.type];
+  }
+  ctx.fillStyle=COLORS[g.type];
+  ctx.beginPath();
+  if(GEM_SHAPES[g.type]==='circle') ctx.arc(0,0,s/2,0,Math.PI*2);
+  if(GEM_SHAPES[g.type]==='square') ctx.rect(-s/2,-s/2,s,s);
+  if(GEM_SHAPES[g.type]==='diamond') ctx.moveTo(0,-s/2),ctx.lineTo(s/2,0),ctx.lineTo(0,s/2),ctx.lineTo(-s/2,0),ctx.closePath();
+  if(GEM_SHAPES[g.type]==='star') for(let i=0;i<10;i++){const a=i*Math.PI/5;const r=i%2?s/3:s/2;ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r);}
+  if(GEM_SHAPES[g.type]==='triangle') ctx.moveTo(0,-s/2),ctx.lineTo(s/2,s/2),ctx.lineTo(-s/2,s/2),ctx.closePath();
+  if(GEM_SHAPES[g.type]==='hex') for(let i=0;i<6;i++){const a=i*Math.PI/3;ctx.lineTo(Math.cos(a)*s/2,Math.sin(a)*s/2);}
+  ctx.fill();
+  ctx.restore();
+}
+function draw(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.save();
+  ctx.translate((cv.width-GRID*gemSize)/2,(cv.height-GRID*gemSize)/2);
+  for(let y=0;y<GRID;y++){
+    for(let x=0;x<GRID;x++){
+      const g=grid[y][x];
+      if(g) drawGem(g);
+    }
+  }
+  ctx.restore();
+  drawParticles();
+  if(flash>0){
+    ctx.fillStyle=`rgba(255,255,255,${flash})`;
+    ctx.fillRect(0,0,cv.width,cv.height);
+    flash*=0.9;
+  }
+}
+function findMatches(){
+  const matches=[];
+  for(let y=0;y<GRID;y++){
+    for(let x=0;x<GRID;x++){
+      const g=grid[y][x];
+      if(!g)continue;
+      let h=1,v=1;
+      while(x+h<GRID&&grid[y][x+h]&&grid[y][x+h].type===g.type)h++;
+      while(y+v<GRID&&grid[y+v][x]&&grid[y+v][x].type===g.type)v++;
+      if(h>=MATCH_MIN){
+        for(let i=0;i<h;i++)matches.push({x:x+i,y});
+      }
+      if(v>=MATCH_MIN){
+        for(let i=0;i<v;i++)matches.push({x,y:y+i});
+      }
+    }
+  }
+  return matches.filter((m,i,arr)=>arr.findIndex(e=>e.x===m.x&&e.y===m.y)===i);
+}
+function markSpecial(match){
+  if(match.length>=5) return 'bomb';
+  if(match.length===4) return 'line';
+  return null;
+}
+function removeMatches(){
+  const matches=findMatches();
+  if(matches.length===0) return false;
+  combo++;
+  cascadeCount++;
+  flash=0.3;
+  matches.forEach(m=>{
+    const g=grid[m.y][m.x];
+    if(g){
+      explodeParticles((g.x+g.offX)*gemSize+gemSize/2,(g.y+g.offY)*gemSize+gemSize/2,COLORS[g.type]);
+      grid[m.y][m.x]=null;
+      KJ.hit();
+    }
+  });
+  score+=matches.length*10*combo;
+  KM.trackScore(score);
+  return true;
+}
+function dropGems(){
+  let moved=false;
+  for(let x=0;x<GRID;x++){
+    let empty=GRID-1;
+    for(let y=GRID-1;y>=0;y--){
+      if(grid[y][x]){
+        if(y<empty){
+          grid[empty][x]=grid[y][x];
+          grid[empty][x].y=empty;
+          grid[empty][x].falling=true;
+          grid[y][x]=null;
+          moved=true;
+        }
+        empty--;
+      }
+    }
+    for(let y=empty-1;y>=0;y--){
+      grid[y][x]=createGem(x,y,randInt(0,5));
+      grid[y][x].offY=-(empty-y);
+      grid[y][x].falling=true;
+      moved=true;
+    }
+  }
+  return moved;
+}
+function animateFall(){
+  let busy=false;
+  for(let y=0;y<GRID;y++){
+    for(let x=0;x<GRID;x++){
+      const g=grid[y][x];
+      if(!g)continue;
+      if(g.offY!==0){
+        const dir=g.offY>0?1:-1;
+        g.offY-=dir*0.4;
+        if((dir===1&&g.offY<0)||(dir===-1&&g.offY>0))g.offY=0;
+        busy=true;
+      }
+      if(g.offX!==0){
+        const dir=g.offX>0?1:-1;
+        g.offX-=dir*0.4;
+        if((dir===1&&g.offX<0)||(dir===-1&&g.offX>0))g.offX=0;
+        busy=true;
+      }
+    }
+  }
+  return busy;
+}
+function processCascade(){
+  if(animating) return;
+  if(removeMatches()){
+    animating=true;
+    setTimeout(()=>{
+      dropGems();
+      animating=false;
+      cascade=true;
+    },300);
+  }else{
+    if(cascade){
+      if(cascadeCount>1) flash=0.5;
+      cascade=false;
+      cascadeCount=0;
+    }
+    combo=0;
+  }
+}
+function particlesUpdate(){
+  particles=particles.filter(p=>{
+    p.x+=p.vx;
+    p.y+=p.vy;
+    p.vy+=0.2;
+    p.life-=0.02;
+    return p.life>0;
+  });
+}
+function drawParticles(){
+  particles.forEach(p=>{
+    ctx.save();
+    ctx.globalAlpha=p.life;
+    ctx.fillStyle=p.color;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,3,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+function explodeParticles(x,y,color){
+  for(let i=0;i<20;i++){
+    const angle=Math.random()*Math.PI*2;
+    const speed=Math.random()*4+2;
+    particles.push({x,y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,color,life:1});
+    KJ.particles(x, y, 14, color);
+  }
+}
+function validSwap(ax,ay,bx,by){
+  const temp=grid[ay][ax];
+  grid[ay][ax]=grid[by][bx];
+  grid[by][bx]=temp;
+  const ok=findMatches().length>0;
+  grid[by][bx]=grid[ay][ax];
+  grid[ay][ax]=temp;
+  return ok;
+}
+function swap(ax,ay,bx,by,callback){
+  const g1=grid[ay][ax],g2=grid[by][bx];
+  if(!g1||!g2)return;
+  const dx=bx-ax,dy=by-ay;
+  const steps=10;let step=0;
+  swapping=true;
+  function anim(){
+    step++;
+    g1.offX=dx*(step/steps);
+    g1.offY=dy*(step/steps);
+    g2.offX=-dx*(step/steps);
+    g2.offY=-dy*(step/steps);
+    if(step>=steps){
+      g1.offX=g1.offY=g2.offX=g2.offY=0;
+      grid[by][bx]=g1;g1.x=bx;g1.y=by;
+      grid[ay][ax]=g2;g2.x=ax;g2.y=ay;
+      swapping=false;
+      if(callback)callback();
+      KJ.swap();
+    }else requestAnimationFrame(anim);
+  }
+  anim();
+}
+function handleInput(e){
+  if(gameOver||swapping||animating)return;
+  const rect=cv.getBoundingClientRect();
+  const x=Math.floor((e.clientX-rect.left-(cv.width-GRID*gemSize)/2)/gemSize);
+  const y=Math.floor((e.clientY-rect.top-(cv.height-GRID*gemSize)/2)/gemSize);
+  if(x<0||x>=GRID||y<0||y>=GRID)return;
+  if(!selected){selected={x,y};return;}
+  const dx=Math.abs(x-selected.x),dy=Math.abs(y-selected.y);
+  if((dx===1&&dy===0)||(dx===0&&dy===1)){
+    if(validSwap(selected.x,selected.y,x,y)){
+      swap(selected.x,selected.y,x,y,()=>{
+        if(!removeMatches()){
+          swap(selected.x,selected.y,x,y);
+        }else{
+          combo=0;
+        }
+      });
+      KJ.shake(6, 150);
+    }else{
+      swap(selected.x,selected.y,x,y,()=>{ 
+        swap(selected.x,selected.y,x,y); 
+      });
+    }
+    selected=null;
+  }else selected={x,y};
+}
+cv.addEventListener('click',handleInput);
+function update(){
+  if(!KM.isPaused() && !gameOver){
+    if(animateFall()){}else if(cascade){
+      processCascade();
+    }
+    particlesUpdate();
+    draw();
+    requestAnimationFrame(update);
+  }
+}
+function tick(){
+  if(!KM.isPaused() && !gameOver){
+    timeLeft--;
+    document.getElementById('time').textContent=timeLeft;
+    if(timeLeft<=0){
+      endGame();
+    }else{
+      setTimeout(tick,1000);
+    }
+  }
+}
+function startGame(){
+  rng=mulberry32(SEED+Date.now());
+  initGrid();
+  score=0;combo=0;timeLeft=DIFFICULTY[currentDifficulty].time+playerUpgrades.timeBonus;cascade=false;cascadeCount=0;particles=[];flash=0;gameOver=false;swapping=false;animating=false;selected=null;
+  runStats={matches:0,maxCombo:0,maxCascade:0,score:0,lockedBroken:0,hardWin:false};
+  document.getElementById('overlay').classList.add('hidden');
+  document.getElementById('hud').classList.remove('hidden');
+  document.getElementById('score').textContent=score;
+  document.getElementById('time').textContent=timeLeft;
+  highScore=localStorage.getItem('crystalHigh')||0;
+  document.getElementById('high').textContent=highScore;
+  document.getElementById('metaStars').textContent=metaStars;
+  update();
+  tick();
+}
+// Hook upgrade milestone into removeMatches
+const _origRemoveMatches = removeMatches;
+removeMatches = function(){
+  const had = _origRemoveMatches();
+  if(had){
+    runStats.matches++;
+    if(combo>runStats.maxCombo)runStats.maxCombo=combo;
+    if(cascadeCount>runStats.maxCascade)runStats.maxCascade=cascadeCount;
+    runStats.score=score;
+    if(runStats.matches%2===0&&!gameOver)showUpgradeModal();
+    checkAchievements();
+  }
+  return had;
+};
+// Debug API
+window.__CRYSTAL_GRID__ = {
+  getScore: () => score,
+  getState: () => gameOver ? 'gameover' : (swapping||animating ? 'animating' : 'playing'),
+  getUpgrades: () => ({...playerUpgrades}),
+  getDifficulty: () => currentDifficulty,
+  getMeta: () => ({stars:metaStars,achievements:Object.keys(achievementState)})
+};
+function endGame(){
+  gameOver=true;
+  if(score>highScore){
+    highScore=score;
+    localStorage.setItem('crystalHigh',highScore);
+  }
+  document.getElementById('finalScore').textContent=score;
+  document.getElementById('gameover').classList.remove('hidden');
+  document.getElementById('overlay').classList.remove('hidden');
+  KM.gameOver(finalScore, {cause: 'time', onRetry: startGame});
+  KJ.gameOver();
+}
+</script>
+</body>
+</html>

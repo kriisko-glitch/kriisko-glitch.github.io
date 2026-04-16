@@ -3,97 +3,131 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Kriisko-Studio — Games</title>
+  <title>Kriisko-Studio &mdash; Games</title>
+  <link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0d0d1a; color: #eee; font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 3rem 1rem; }
-    h1 { font-size: 2rem; margin-bottom: 0.25rem; letter-spacing: 0.05em; }
-    .sub { opacity: 0.5; font-size: 0.9rem; margin-bottom: 3rem; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1.5rem; width: 100%; max-width: 900px; }
-    .card { background: #1a1a2e; border: 1px solid #0f3460; border-radius: 8px; padding: 1.5rem; display: flex; flex-direction: column; gap: 0.75rem; transition: border-color 0.2s; }
-    .card:hover { border-color: #e94560; }
-    .card h2 { font-size: 1.1rem; }
-    .card p { font-size: 0.8rem; opacity: 0.6; flex: 1; }
-    .badge { font-size: 0.7rem; padding: 0.2rem 0.5rem; border-radius: 99px; background: #0f3460; display: inline-block; }
-    .badge.live { background: #1a472a; color: #4caf50; }
-    a.play { display: inline-block; margin-top: auto; padding: 0.5rem 1rem; background: #e94560; color: #fff; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 0.9rem; text-align: center; }
+    body {
+      background: radial-gradient(ellipse at top, #1a1a3e 0%, #0d0d1a 50%, #08080f 100%);
+      color: #eee;
+      font-family: 'Orbitron', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 3rem 1rem 4rem;
+    }
+    h1 {
+      font-family: 'Audiowide', sans-serif;
+      font-size: 2.5rem;
+      margin-bottom: 0.25rem;
+      letter-spacing: 0.06em;
+      background: linear-gradient(120deg, #00e5ff 0%, #e94560 50%, #ffd54f 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-shadow: 0 0 30px rgba(0, 229, 255, 0.25);
+    }
+    .sub { opacity: 0.55; font-size: 0.9rem; margin-bottom: 2rem; letter-spacing: 0.08em; }
+    .stats { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; margin-bottom: 2rem; }
+    .stat { background: rgba(0,229,255,0.08); border: 1px solid rgba(0,229,255,0.25); border-radius: 999px; padding: 0.35rem 0.9rem; font-size: 0.75rem; letter-spacing: 0.1em; }
+    .stat strong { color: #00e5ff; font-weight: 700; }
+    .nav-row { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center; margin-bottom: 2.5rem; }
+    .nav-row a { display: inline-block; padding: 0.6rem 1.4rem; border-radius: 8px; color: #0ff; text-decoration: none; font-family: 'Audiowide', monospace; font-weight: bold; font-size: 0.95rem; letter-spacing: 2px; text-shadow: 0 0 8px #0ff; background: linear-gradient(135deg, #0f3460, #1a1a2e); border: 2px solid #0ff; box-shadow: 0 0 16px rgba(0,255,255,0.2); transition: all 0.15s; }
+    .nav-row a:hover { background: #0ff; color: #000; text-shadow: none; box-shadow: 0 0 24px #0ff; }
+    .nav-row a.accent { color: #ff8f8f; border-color: #e94560; text-shadow: 0 0 8px rgba(233,69,96,0.8); background: linear-gradient(135deg, #1a1a2e, #0f3460); box-shadow: 0 0 16px rgba(233,69,96,0.18); }
+    .nav-row a.accent:hover { background: #e94560; color: #fff; box-shadow: 0 0 24px #e94560; }
+    .section-header { width: 100%; max-width: 1100px; margin: 1.5rem 0 1rem; display: flex; align-items: center; gap: 0.75rem; }
+    .section-header h2 { font-size: 0.95rem; letter-spacing: 0.2em; color: #00e5ff; font-weight: 700; text-transform: uppercase; }
+    .section-header .line { flex: 1; height: 1px; background: linear-gradient(90deg, rgba(0,229,255,0.5), transparent); }
+    .section-header .count { font-size: 0.75rem; color: #888; letter-spacing: 0.1em; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; width: 100%; max-width: 1100px; }
+    .card { background: rgba(26,26,46,0.85); border: 1px solid #0f3460; border-radius: 10px; padding: 1.25rem; display: flex; flex-direction: column; gap: 0.6rem; transition: border-color 0.2s, transform 0.15s, box-shadow 0.2s; position: relative; overflow: hidden; }
+    .card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, rgba(0,229,255,0.4), transparent); opacity: 0; transition: opacity 0.2s; }
+    .card:hover { border-color: #e94560; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(233,69,96,0.15); }
+    .card:hover::before { opacity: 1; }
+    .card.ship { border-color: rgba(76,175,80,0.6); }
+    .card.ship::before { background: linear-gradient(90deg, transparent, #4caf50, transparent); opacity: 1; }
+    .card h3 { font-family: 'Audiowide', sans-serif; font-size: 1.05rem; color: #00e5ff; }
+    .card.ship h3 { color: #a5d6a7; }
+    .card p { font-size: 0.78rem; opacity: 0.65; line-height: 1.45; flex: 1; }
+    .badges { display: flex; flex-wrap: wrap; gap: 0.4rem; font-size: 0.65rem; letter-spacing: 0.1em; font-weight: 700; }
+    .badge { padding: 0.2rem 0.6rem; border-radius: 99px; background: rgba(15,52,96,0.7); color: #8cf; border: 1px solid rgba(0,229,255,0.25); }
+    .badge.ship { background: rgba(76,175,80,0.15); color: #4caf50; border-color: rgba(76,175,80,0.4); }
+    .badge.score { background: rgba(255,213,79,0.12); color: #ffd54f; border-color: rgba(255,213,79,0.3); }
+    a.play { display: inline-block; margin-top: auto; padding: 0.55rem 1rem; background: #e94560; color: #fff; border-radius: 6px; text-decoration: none; font-family: 'Audiowide', sans-serif; font-size: 0.85rem; letter-spacing: 0.1em; text-align: center; transition: background 0.15s, transform 0.1s; }
     a.play:hover { background: #ff6b6b; }
+    a.play:active { transform: scale(0.97); }
+    .card.ship a.play { background: #4caf50; }
+    .card.ship a.play:hover { background: #66bb6a; }
+    footer { margin-top: 3rem; font-size: 0.7rem; color: #666; letter-spacing: 0.1em; text-align: center; max-width: 600px; }
   </style>
 </head>
 <body>
-  <h1>Kriisko-Studio</h1>
-  <p class="sub">AI-First Game Studio — kriisko-glitch</p>
-  <div style="display:flex;flex-wrap:wrap;gap:0.75rem;justify-content:center;margin-bottom:2rem;">
-    <a href="leaderboard/index.html" style="display:inline-block;padding:0.7rem 1.8rem;background:linear-gradient(135deg,#0f3460,#1a1a2e);border:2px solid #0ff;border-radius:8px;color:#0ff;text-decoration:none;font-family:'Courier New',monospace;font-weight:bold;font-size:1.1rem;letter-spacing:2px;text-shadow:0 0 8px #0ff;box-shadow:0 0 16px rgba(0,255,255,0.2);transition:all 0.2s;" onmouseover="this.style.background='#0ff';this.style.color='#000';this.style.textShadow='none';this.style.boxShadow='0 0 24px #0ff'" onmouseout="this.style.background='linear-gradient(135deg,#0f3460,#1a1a2e)';this.style.color='#0ff';this.style.textShadow='0 0 8px #0ff';this.style.boxShadow='0 0 16px rgba(0,255,255,0.2)'">&#127942; HALL OF FAME</a>
-    <a href="feedback/index.html" style="display:inline-block;padding:0.7rem 1.8rem;background:linear-gradient(135deg,#1a1a2e,#0f3460);border:2px solid #e94560;border-radius:8px;color:#ff8f8f;text-decoration:none;font-family:'Courier New',monospace;font-weight:bold;font-size:1.1rem;letter-spacing:2px;text-shadow:0 0 8px rgba(233,69,96,0.8);box-shadow:0 0 16px rgba(233,69,96,0.18);transition:all 0.2s;" onmouseover="this.style.background='#e94560';this.style.color='#fff';this.style.textShadow='none';this.style.boxShadow='0 0 24px #e94560'" onmouseout="this.style.background='linear-gradient(135deg,#1a1a2e,#0f3460)';this.style.color='#ff8f8f';this.style.textShadow='0 0 8px rgba(233,69,96,0.8)';this.style.boxShadow='0 0 16px rgba(233,69,96,0.18)'">&#9993; FEEDBACK</a>
+  <h1>KRIISKO-STUDIO</h1>
+  <p class="sub">AI-FIRST GAME STUDIO &nbsp;&middot;&nbsp; 29 PLAYABLE TITLES</p>
+
+  <div class="stats">
+    <span class="stat"><strong>29</strong> GAMES</span>
+    <span class="stat"><strong>9</strong> SHIP-READY</span>
+    <span class="stat"><strong>25/29</strong> GENRE FLOOR</span>
+    <span class="stat">RUBRIC v1.0</span>
+  </div>
+
+  <div class="nav-row">
+    <a href="leaderboard/index.html">&#127942; HALL OF FAME</a>
+    <a class="accent" href="feedback/index.html">&#9993; FEEDBACK</a>
+  </div>
+
+  <div class="section-header">
+    <h2>&#11088; Ship-Ready</h2>
+    <span class="count">9 games &middot; rubric score &ge; 7.0</span>
+    <div class="line"></div>
   </div>
   <div class="grid">
-    <div class="card">
-      <h2>Snake v3</h2>
-      <p>Classic snake with wrap-around grid, speed scaling, and a no-reverse grace period.</p>
-      <span class="badge live">LIVE</span>
-      <a class="play" href="snake/index.html">Play</a>
-    </div>
-    <div class="card">
-      <h2>Breakout</h2>
-      <p>Ball-and-paddle brick breaker with multi-level progression and power-ups.</p>
-      <span class="badge live">LIVE</span>
-      <a class="play" href="breakout/index.html">Play</a>
-    </div>
-    <div class="card">
-      <h2>Space Shooter</h2>
-      <p>Classic top-down shooter built with Phaser 3. Waves, bosses, and audio.</p>
-      <span class="badge live">LIVE</span>
-      <a class="play" href="space-shooter/index.html">Play</a>
-    </div>
-    <div class="card">
-      <h2>Platformer</h2>
-      <p>Procedural side-scroller with wall jumps, coins, gems, enemies, and 3 looping zones.</p>
-      <span class="badge live">LIVE</span>
-      <a class="play" href="platformer/index.html">Play</a>
-    </div>
-    <div class="card">
-      <h2>Tower Defense</h2>
-      <p>Strategic tower placement with 3 tower types, 3 enemy types, and endless wave progression.</p>
-      <span class="badge live">LIVE</span>
-      <a class="play" href="tower-defense/index.html">Play</a>
-    </div>
-    <div class="card">
-      <h2>Survivors Arena</h2>
-      <p>Vampire Survivors-style auto-attack survival. 4 weapons, 4 enemy types, XP leveling, upgrades.</p>
-      <span class="badge live">LIVE</span>
-      <a class="play" href="survivors-arena/index.html">Play</a>
-    </div>
-    <div class="card">
-      <h2>Dungeon Crawl</h2>
-      <p>Top-down dungeon crawler with dynamic lighting, AI companion, procedural floors, and combat.</p>
-      <span class="badge live">LIVE</span>
-      <a class="play" href="dungeon-crawl/index.html">Play</a>
-    </div>
-    <div class="card">
-      <h2>Whiskers &amp; Wands</h2>
-      <p>LLM Pet RPG — dungeon crawler with an AI companion powered by Gemini. Give it commands: Follow, Attack, or Wait.</p>
-      <span class="badge live">LIVE</span>
-      <a class="play" href="llm-pet-rpg/index.html">Play</a>
-    </div>
-    <div class="card">
-      <h2>Void Drift</h2>
-      <p>Twin-stick survival shooter. Pilot your ship through escalating enemy waves, collect upgrade orbs, and survive as long as you can in deep space.</p>
-      <span class="badge live">LIVE</span>
-      <a class="play" href="void-drift/index.html">Play</a>
-    </div>
-    <div class="card">
-      <h2>Particle Forge</h2>
-      <p>Idle merge game. Fuse elements from Hydrogen to Iron, build automation, research upgrades, and trigger the Big Bang prestige for Dark Energy currency.</p>
-      <span class="badge live">LIVE</span>
-      <a class="play" href="particle-forge/index.html">Play</a>
-    </div>
-    <div class="card">
-      <h2>Stellar Siege</h2>
-      <p>3D space shooter — fight waves of enemy ships through a glowing nebula. Three.js, bloom, particle explosions.</p>
-      <span class="badge live">LIVE</span>
-      <a class="play" href="stellar-siege/index.html">Play</a>
-    </div>
+    <div class="card ship"><h3>Neon Citadel</h3><div class="badges"><span class="badge ship">SHIP</span><span class="badge score">7.97</span><span class="badge">Tower Defense</span></div><p>Premium TD with 6 tower classes, curved path, 30 waves, bosses, interest banking, upgrade tiers, 3 speeds. Our top-scoring game.</p><a class="play" href="neon-citadel/index.html">Play</a></div>
+    <div class="card ship"><h3>Neon Survivors v2</h3><div class="badges"><span class="badge ship">SHIP</span><span class="badge score">7.61</span><span class="badge">Survivors</span></div><p>Auto-attack survival with 5 enemy classes, 5 weapon types, deep upgrade pool, seeded runs, achievements.</p><a class="play" href="neon-survivors-v2/index.html">Play</a></div>
+    <div class="card ship"><h3>Neon Survivors</h3><div class="badges"><span class="badge ship">SHIP</span><span class="badge score">7.53</span><span class="badge">Survivors</span></div><p>Vampire-Survivors-style auto-attack with 8-upgrade pool and meta-progression. Move through waves, collect XP, level up.</p><a class="play" href="neon-survivors/index.html">Play</a></div>
+    <div class="card ship"><h3>Stellar Siege</h3><div class="badges"><span class="badge ship">SHIP</span><span class="badge score">7.33</span><span class="badge">Shmup</span></div><p>Space combat shooter. Lasers, shields, power-ups, escalating waves. Mouse aim, perk tree, difficulty select.</p><a class="play" href="stellar-siege/index.html">Play</a></div>
+    <div class="card ship"><h3>Neon Dungeon</h3><div class="badges"><span class="badge ship">SHIP</span><span class="badge score">7.20</span><span class="badge">Roguelike</span></div><p>Top-down roguelike with 5 enemy classes, 4 weapons, seeded procedural rooms, unlock tiers, achievements.</p><a class="play" href="neon-dungeon/index.html">Play</a></div>
+    <div class="card ship"><h3>Neon Snake Plus</h3><div class="badges"><span class="badge ship">SHIP</span><span class="badge score">7.20</span><span class="badge">Arcade</span></div><p>Snake with power-ups, obstacles, particle trails, upgrade modal every 50 pts, 3 obstacle types.</p><a class="play" href="neon-snake-plus/index.html">Play</a></div>
+    <div class="card ship"><h3>Whiskers &amp; Wands</h3><div class="badges"><span class="badge ship">SHIP</span><span class="badge score">7.03</span><span class="badge">LLM Roguelike</span></div><p>Dungeon crawler with AI companion powered by Gemini. Commands: Follow, Attack, Wait. 4 enemy classes, 4 weapons, pet level-ups.</p><a class="play" href="llm-pet-rpg/index.html">Play</a></div>
+    <div class="card ship"><h3>Platformer</h3><div class="badges"><span class="badge ship">SHIP</span><span class="badge score">7.02</span><span class="badge">Platformer</span></div><p>Procedural side-scroller with wall jumps, coins, gems, 4 enemy types, 8-upgrade pool, 3 zones.</p><a class="play" href="platformer/index.html">Play</a></div>
+    <div class="card ship"><h3>Neon Fortress</h3><div class="badges"><span class="badge ship">SHIP</span><span class="badge score">7.00</span><span class="badge">Tower Defense</span></div><p>Tower defense with Basic, Sniper, Splash, Frost towers. Manage gold, survive waves, protect your lives.</p><a class="play" href="neon-fortress/index.html">Play</a></div>
   </div>
+
+  <div class="section-header">
+    <h2>Full Catalog</h2>
+    <span class="count">20 more games</span>
+    <div class="line"></div>
+  </div>
+  <div class="grid">
+    <div class="card"><h3>Neon Wings</h3><div class="badges"><span class="badge score">6.93</span><span class="badge">Arcade</span></div><p>Flappy bird with power-ups, 3 pipe types, coin multipliers, achievement toasts, upgrade pool.</p><a class="play" href="neon-wings/index.html">Play</a></div>
+    <div class="card"><h3>Neon Abyss</h3><div class="badges"><span class="badge score">6.92</span><span class="badge">Roguelike</span></div><p>Roguelike dungeon. WASD + click combat, procedural BSP rooms, fog of war, 10 floors with bosses.</p><a class="play" href="neon-abyss/index.html">Play</a></div>
+    <div class="card"><h3>Dungeon Crawl</h3><div class="badges"><span class="badge score">6.89</span><span class="badge">Roguelike</span></div><p>Top-down dungeon crawler with dynamic lighting, AI companion, procedural floors, 7 enemy classes.</p><a class="play" href="dungeon-crawl/index.html">Play</a></div>
+    <div class="card"><h3>Snake v3</h3><div class="badges"><span class="badge score">6.84</span><span class="badge">Arcade</span></div><p>Classic snake with wrap-around grid, speed scaling, upgrade pool, achievements, meta-progression.</p><a class="play" href="snake/index.html">Play</a></div>
+    <div class="card"><h3>Survivors Arena</h3><div class="badges"><span class="badge score">6.81</span><span class="badge">Survivors</span></div><p>Auto-attack survival. 5 weapons, 5 enemy types, XP leveling, 10 ability upgrades.</p><a class="play" href="survivors-arena/index.html">Play</a></div>
+    <div class="card"><h3>Void Drift</h3><div class="badges"><span class="badge score">6.81</span><span class="badge">Shmup</span></div><p>Twin-stick survival shooter. Pilot your ship through escalating waves, collect upgrade orbs, survive.</p><a class="play" href="void-drift/index.html">Play</a></div>
+    <div class="card"><h3>Neon Maze</h3><div class="badges"><span class="badge score">6.76</span><span class="badge">Puzzle</span></div><p>Procedural maze with fog of war, patrol ghosts, collectible keys, 3 obstacle types per level.</p><a class="play" href="neon-maze/index.html">Play</a></div>
+    <div class="card"><h3>Neon Pong Plus</h3><div class="badges"><span class="badge score">6.75</span><span class="badge">Arcade</span></div><p>Pong vs AI with power-ups: multi-ball, paddle size, spin control, shield zone, 7-upgrade pool.</p><a class="play" href="neon-pong/index.html">Play</a></div>
+    <div class="card"><h3>Neon Barrage</h3><div class="badges"><span class="badge score">6.74</span><span class="badge">Bullet Hell</span></div><p>Bullet hell shooter. Dodge complex patterns, 3 weapons with Q/E cycle, bosses every 5 waves.</p><a class="play" href="neon-barrage/index.html">Play</a></div>
+    <div class="card"><h3>Crystal Grid</h3><div class="badges"><span class="badge score">6.71</span><span class="badge">Puzzle</span></div><p>Match-3 with cascading combos, special gems, seeded boards, 8 upgrades, 3 obstacle tile types.</p><a class="play" href="crystal-grid/index.html">Play</a></div>
+    <div class="card"><h3>Neon Memory</h3><div class="badges"><span class="badge score">6.68</span><span class="badge">Puzzle</span></div><p>Card matching with geometric symbols, combo bonuses, star ratings, 8-upgrade pool, 3 card-back types.</p><a class="play" href="neon-memory/index.html">Play</a></div>
+    <div class="card"><h3>Space Shooter</h3><div class="badges"><span class="badge score">6.67</span><span class="badge">Shmup</span></div><p>Top-down shooter built with Phaser 3. Waves, bosses, 4-weapon classes, seeded runs.</p><a class="play" href="space-shooter/index.html">Play</a></div>
+    <div class="card"><h3>Gravity Shift</h3><div class="badges"><span class="badge score">6.61</span><span class="badge">Platformer</span></div><p>Flip gravity. Auto-scrolling, spike/laser/movingBlock obstacles, 8-upgrade pool, seeded levels.</p><a class="play" href="gravity-shift/index.html">Play</a></div>
+    <div class="card"><h3>Neon Farm</h3><div class="badges"><span class="badge score">6.58</span><span class="badge">Idle</span></div><p>Idle clicker with 5 upgrade tiers, prestige system, offline progress, escalating automation.</p><a class="play" href="neon-farm/index.html">Play</a></div>
+    <div class="card"><h3>Asteroid Miner</h3><div class="badges"><span class="badge score">6.57</span><span class="badge">Shmup</span></div><p>Mine asteroids with lasers, 4 enemy classes, 3 weapons Q/E cycle, progressive difficulty.</p><a class="play" href="asteroid-miner/index.html">Play</a></div>
+    <div class="card"><h3>Neon Racer</h3><div class="badges"><span class="badge score">6.57</span><span class="badge">Racing</span></div><p>Endless top-down racer with drift physics. 3 obstacle types, car upgrades, seeded level generation.</p><a class="play" href="neon-racer/index.html">Play</a></div>
+    <div class="card"><h3>Beat Pulse</h3><div class="badges"><span class="badge score">6.55</span><span class="badge">Rhythm</span></div><p>Rhythm game with 4 lanes (DFJK). Procedural notes, 4 note classes, combos, health bar, perk tree.</p><a class="play" href="beat-pulse/index.html">Play</a></div>
+    <div class="card"><h3>Particle Forge</h3><div class="badges"><span class="badge score">6.46</span><span class="badge">Idle</span></div><p>Idle merge game. Fuse elements from Hydrogen to Iron, build automation, research upgrades, Big Bang prestige.</p><a class="play" href="particle-forge/index.html">Play</a></div>
+    <div class="card"><h3>Breakout</h3><div class="badges"><span class="badge score">6.32</span><span class="badge">Arcade</span></div><p>Brick breaker with multi-level progression, power-ups, 3 brick types, 7-upgrade modal.</p><a class="play" href="breakout/index.html">Play</a></div>
+    <div class="card"><h3>Tower Defense</h3><div class="badges"><span class="badge score">6.31</span><span class="badge">Tower Defense</span></div><p>Strategic tower placement with 4 tower classes, 5 enemy types, endless wave progression.</p><a class="play" href="tower-defense/index.html">Play</a></div>
+  </div>
+
+  <footer>
+    <p>Scored by the Kriisko-Studio AI-Player Rubric v1.0 &middot; 2026-04-16</p>
+    <p style="margin-top:0.5rem;">Four pillars: Self-Determination Theory &middot; Modern 2D Visuals &middot; Playability (feel) &middot; Depth</p>
+    <p style="margin-top:0.75rem; opacity: 0.6;">Built with Claude + Groq Fleet</p>
+  </footer>
 </body>
 </html>

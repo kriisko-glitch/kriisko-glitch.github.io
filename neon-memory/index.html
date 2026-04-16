@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Memory</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Audiowide&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #0a0a0a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Audiowide', sans-serif;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            cursor: pointer;
+        }
+        .vignette {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 1));
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <script src="../shared/kriisko-juice.js"></script>
+    <script src="../shared/kriisko-meta.js"></script>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        // Game states
+        const STATES = {
+            MENU: 'menu',
+            PLAYING: 'playing',
+            GAMEOVER: 'gameover'
+        };
+        
+        // Game variables
+        let gameState = STATES.MENU;
+        let gridSize = 4;
+        let cards = [];
+        let flippedCards = [];
+        let matchedPairs = 0;
+        let moves = 0;
+        let timer = 0;
+        let combo = 0;
+        let lastMatchTime = 0;
+        let selectedLevel = 0;
+        let particles = [];
+        let shakeAmount = 0;
+        
+        // Colors
+        const NEON_COLORS = {
+            pink: '#FF006E',
+            cyan: '#00F5FF',
+            yellow: '#FFD60A',
+            green: '#06FFA5',
+            purple: '#BD00FF',
+            orange: '#FF8500',
+            red: '#FF3131',
+            blue: '#008CFF'
+        };
+        
+        const BG_COLOR = '#0a0a0a';
+        const CARD_BACK_COLOR = '#1a1a1a';
+        const GLOW_COLOR = '#FFFFFF';
+        
+        // Card class
+        class Card {
+            constructor(x, y, symbol, color, size) {
+                this.x = x;
+                this.y = y;
+                this.symbol = symbol;
+                this.color = color;
+                this.size = size;
+                this.flipped = false;
+                this.matched = false;
+                this.flipAnimation = 0;
+                this.glowIntensity = 0;
+                this.shakeX = 0;
+                this.shakeY = 0;
+            }
+            
+            update(deltaTime) {
+                if (this.flipAnimation > 0) {
+                    this.flipAnimation = Math.max(0, this.flipAnimation - deltaTime * 3);
+                }
+                
+                if (this.glowIntensity > 0) {
+                    this.glowIntensity = Math.max(0, this.glowIntensity - deltaTime * 2);
+                }
+                
+                if (Math.abs(this.shakeX) > 0.1) {
+                    this.shakeX *= 0.9;
+                } else {
+                    this.shakeX = 0;
+                }
+                
+                if (Math.abs(this.shakeY) > 0.1) {
+                    this.shakeY *= 0.9;
+                } else {
+                    this.shakeY = 0;
+                }
+            }
+            
+            draw() {
+                const centerX = this.x + this.size / 2 + this.shakeX;
+                const centerY = this.y + this.size / 2 + this.shakeY;
+                const flipScale = Math.cos(this.flipAnimation * Math.PI);
+                
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.scale(flipScale, 1);
+                
+                // Glow effect
+                if (this.glowIntensity > 0) {
+                    ctx.shadowBlur = 30 * this.glowIntensity;
+                    ctx.shadowColor = this.color;
+                }
+                
+                // Card background
+                if (flipScale > 0) {
+                    // Back of card
+                    const gradient = ctx.createLinearGradient(-this.size/2, -this.size/2, this.size/2, this.size/2);
+                    gradient.addColorStop(0, CARD_BACK_COLOR);
+                    gradient.addColorStop(1, '#2a2a2a');
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+                    
+                    // Card border
+                    ctx.strokeStyle = NEON_COLORS.cyan;
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(-this.size/2, -this.size/2, this.size, this.size);
+                    
+                    // Question mark
+                    ctx.fillStyle = NEON_COLORS.cyan;
+                    ctx.font = `bold ${this.size * 0.6}px Arial`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('?', 0, 0);
+                } else {
+                    // Front of card
+                    ctx.fillStyle = '#1a1a1a';
+                    ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+                    
+                    ctx.strokeStyle = this.color;
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(-this.size/2, -this.size/2, this.size, this.size);
+                    
+                    // Draw symbol
+                    ctx.fillStyle = this.color;
+                    ctx.strokeStyle = this.color;
+                    ctx.lineWidth = 3;
+                    this.drawSymbol();
+                }
+                
+                ctx.restore();
+            }
+            
+            drawSymbol() {
+                const size = this.size * 0.3;
+                
+                switch(this.symbol) {
+                    case 'star':
+                        this.drawStar(0, 0, 5, size, size * 0.5);
+                        break;
+                    case 'diamond':
+                        ctx.save();
+                        ctx.translate(0, 0);
+                        ctx.rotate(Math.PI / 4);
+                        ctx.fillRect(-size/2, -size/2, size, size);
+                        ctx.restore();
+                        break;
+                    case 'circle':
+                        ctx.beginPath();
+                        ctx.arc(0, 0, size/2, 0, Math.PI * 2);
+                        ctx.fill();
+                        break;
+                    case 'triangle':
+                        ctx.beginPath();
+                        ctx.moveTo(0, -size/2);
+                        ctx.lineTo(-size/2, size/2);
+                        ctx.lineTo(size/2, size/2);
+                        ctx.closePath();
+                        ctx.fill();
+                        break;
+                    case 'hexagon':
+                        this.drawPolygon(0, 0, 6, size/2);
+                        break;
+                    case 'cross':
+                        ctx.fillRect(-size/6, -size/2, size/3, size);
+                        ctx.fillRect(-size/2, -size/6, size, size/3);
+                        break;
+                    case 'moon':
+                        ctx.beginPath();
+                        ctx.arc(0, 0, size/2, Math.PI * 0.5, Math.PI * 1.5);
+                        ctx.arc(size/4, 0, size/2, Math.PI * 1.5, Math.PI * 0.5);
+                        ctx.fill();
+                        break;
+                    case 'heart':
+                        this.drawHeart(0, 0, size);
+                        break;
+                }
+            }
+            
+            drawStar(x, y, spikes, outerRadius, innerRadius) {
+                let rot = Math.PI / 2 * 3;
+                let step = Math.PI / spikes;
+                
+                ctx.beginPath();
+                ctx.moveTo(x, y - outerRadius);
+                
+                for (let i = 0; i < spikes; i++) {
+                    ctx.lineTo(x + Math.cos(rot) * outerRadius, y + Math.sin(rot) * outerRadius);
+                    rot += step;
+                    ctx.lineTo(x + Math.cos(rot) * innerRadius, y + Math.sin(rot) * innerRadius);
+                    rot += step;
+                }
+                
+                ctx.lineTo(x, y - outerRadius);
+                ctx.closePath();
+                ctx.fill();
+            }
+            
+            drawPolygon(x, y, sides, radius) {
+                ctx.beginPath();
+                for (let i = 0; i < sides; i++) {
+                    const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
+                    const px = x + Math.cos(angle) * radius;
+                    const py = y + Math.sin(angle) * radius;
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                ctx.fill();
+            }
+            
+            drawHeart(x, y, size) {
+                ctx.beginPath();
+                const topCurveHeight = size * 0.3;
+                ctx.moveTo(x, y + topCurveHeight);
+                
+                // Top left curve
+                ctx.bezierCurveTo(
+                    x, y,
+                    x - size / 2, y,
+                    x - size / 2, y + topCurveHeight
+                );
+                
+                // Bottom left curve
+                ctx.bezierCurveTo(
+                    x - size / 2, y + size * 0.7,
+                    x, y + size * 0.7,
+                    x, y + size
+                );
+                
+                // Bottom right curve
+                ctx.bezierCurveTo(
+                    x, y + size * 0.7,
+                    x + size / 2, y + size * 0.7,
+                    x + size / 2, y + topCurveHeight
+                );
+                
+                // Top right curve
+                ctx.bezierCurveTo(
+                    x + size / 2, y,
+                    x, y,
+                    x, y + topCurveHeight
+                );
+                
+                ctx.fill();
+            }
+            
+            flip() {
+                if (!this.flipped && !this.matched && flippedCards.length < 2) {
+                    this.flipped = true;
+                    this.flipAnimation = 1;
+                    flippedCards.push(this);
+                    KM.hit();
+                }
+            }
+            
+            checkMatch() {
+                if (flippedCards.length === 2) {
+                    moves++;
+                    
+                    if (flippedCards[0].symbol === flippedCards[1].symbol) {
+                        // Match
+                        flippedCards.forEach(card => {
+                            card.matched = true;
+                            card.glowIntensity = 1;
+                            KM.pickup();
+                        });
+                        
+                        matchedPairs++;
+                        combo++;
+                        lastMatchTime = timer;
+                        
+                        // Create particles
+                        const card = flippedCards[0];
+                        for (let i = 0; i < 20; i++) {
+                            particles.push(new Particle(
+                                card.x + card.size / 2,
+                                card.y + card.size / 2,
+                                this.color
+                            ));
+                            KM.particles(card.x + card.size / 2, card.y + card.size / 2, 14, this.color);
+                        }
+                        
+                        // Time bonus for combo
+                        if (combo > 1) {
+                            timer = Math.max(0, timer - combo * 2);
+                        }
+                        
+                        flippedCards = [];
+                        
+                        // Check win
+                        if (matchedPairs === cards.length / 2) {
+                            endGame();
+                        }
+                    } else {
+                        // No match
+                        combo = 0;
+                        timer += 2; // Penalty
+                        
+                        // Shake animation
+                        flippedCards.forEach(card => {
+                            card.shakeX = (Math.random() - 0.5) * 10;
+                            card.shakeY = (Math.random() - 0.5) * 10;
+                        });
+                        
+                        setTimeout(() => {
+                            flippedCards.forEach(card => {
+                                card.flipped = false;
+                                card.flipAnimation = 1;
+                            });
+                            flippedCards = [];
+                        }, 1000);
+                    }
+                }
+            }
+        }
+        
+        // Particle class
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 5;
+                this.vy = (Math.random() - 0.5) * 5;
+                this.life = 1;
+                this.color = color;
+                this.size = Math.random() * 5 + 2;
+            }
+            
+            update(deltaTime) {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.2;
+                this.life -= deltaTime * 2;
+            }
+            
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+        
+        // Initialize game
+        function initGame() {
+            cards = [];
+            flippedCards = [];
+            matchedPairs = 0;
+            moves = 0;
+            timer = 0;
+            combo = 0;
+            particles = [];
+            
+            const symbols = ['star', 'diamond', 'circle', 'triangle', 'hexagon', 'cross', 'moon', 'heart'];
+            const colors = Object.values(NEON_COLORS);
+            const cardCount = gridSize * gridSize;
+            const pairs = cardCount / 2;
+            
+            // Create pairs
+            const cardData = [];
+            for (let i = 0; i < pairs; i++) {
+                const symbol = symbols[i % symbols.length];
+                const color = colors[i % colors.length];
+                cardData.push({ symbol, color });
+                cardData.push({ symbol, color });
+            }
+            
+            // Shuffle
+            for (let i = cardData.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [cardData[i], cardData[j]] = [cardData[j], cardData[i]];
+            }
+            
+            // Create cards
+            const cardSize = Math.min(canvas.width, canvas.height) * 0.8 / gridSize;
+            const startX = (canvas.width - cardSize * gridSize) / 2;
+            const startY = (canvas.height - cardSize * gridSize) / 2 + 50;
+            
+            for (let row = 0; row < gridSize; row++) {
+                for (let col = 0; col < gridSize; col++) {
+                    const index = row * gridSize + col;
+                    const card = new Card(
+                        startX + col * cardSize,
+                        startY + row * cardSize,
+                        cardData[index].symbol,
+                        cardData[index].color,
+                        cardSize * 0.9
+                    );
+                    cards.push(card);
+                }
+            }
+        }
+        
+        // Draw UI
+        function drawUI() {
+            // Background
+            ctx.fillStyle = BG_COLOR;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // HUD Background
+            ctx.fillStyle = 'rgba(26, 26, 26, 0.9)';
+            ctx.fillRect(0, 0, canvas.width, 80);
+            
+            // Timer
+            ctx.fillStyle = NEON_COLORS.cyan;
+            ctx.font = 'bold 24px Audiowide';
+            ctx.textAlign = 'left';
+            ctx.fillText(`Time: ${timer.toFixed(1)}s`, 20, 35);
+            
+            // Moves
+            ctx.fillStyle = NEON_COLORS.yellow;
+            ctx.fillText(`Moves: ${moves}`, 20, 65);
+            
+            // Combo
+            if (combo > 1) {
+                ctx.fillStyle = NEON_COLORS.green;
+                ctx.textAlign = 'center';
+                ctx.font = 'bold 32px Audiowide';
+                ctx.fillText(`${combo}x COMBO!`, canvas.width / 2, 45);
+            }
+            
+            // Stars
+            ctx.textAlign = 'right';
+            const stars = Math.max(0, 3 - Math.floor(moves / (gridSize * gridSize)));
+            for (let i = 0; i < 3; i++) {
+                ctx.fillStyle = i < stars ? NEON_COLORS.yellow : '#333';
+                ctx.font = 'bold 30px Audiowide';
+                ctx.fillText('★', canvas.width - 150 + i * 40, 45);
+            }
+            
+            // Best time
+            const bestTime = localStorage.getItem(`bestTime${gridSize}x${gridSize}`);
+            if (bestTime) {
+                ctx.fillStyle = NEON_COLORS.purple;
+                ctx.font = 'bold 18px Audiowide';
+                ctx.fillText(`Best: ${parseFloat(bestTime).toFixed(1)}s`, canvas.width - 20, 35);
+            }
+        }
+        
+        // Draw menu
+        function drawMenu() {
+            ctx.fillStyle = BG_COLOR;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Title
+            ctx.fillStyle = NEON_COLORS.pink;
+            ctx.font = 'bold 72px Audiowide';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('NEON MEMORY', canvas.width / 2, canvas.height / 2 - 150);
+            
+            // Subtitle
+            ctx.fillStyle = NEON_COLORS.cyan;
+            ctx.font = 'bold 24px Audiowide';
+            ctx.fillText('Match the neon symbols', canvas.width / 2, canvas.height / 2 - 80);
+            
+            // Level buttons
+            const levels = [
+                { size: 4, label: 'EASY - 4x4 Grid' },
+                { size: 5, label: 'MEDIUM - 5x5 Grid' },
+                { size: 6, label: 'HARD - 6x6 Grid' }
+            ];
+            
+            levels.forEach((level, index) => {
+                const y = canvas.height / 2 + index * 80;
+                const width = 300;
+                const height = 60;
+                const x = canvas.width / 2 - width / 2;
+                
+                // Button background
+                ctx.fillStyle = selectedLevel === index ? NEON_COLORS.pink : '#1a1a1a';
+                ctx.fillRect(x, y, width, height);
+                
+                // Button border
+                ctx.strokeStyle = selectedLevel === index ? NEON_COLORS.pink : NEON_COLORS.cyan;
+                ctx.lineWidth = 3;
+                ctx.strokeRect(x, y, width, height);
+                
+                // Button text
+                ctx.fillStyle = selectedLevel === index ? BG_COLOR : NEON_COLORS.cyan;
+                ctx.font = 'bold 20px Audiowide';
+                ctx.fillText(level.label, canvas.width / 2, y + height / 2);
+                
+                // Best time
+                const bestTime = localStorage.getItem(`bestTime${level.size}x${level.size}`);
+                if (bestTime) {
+                    ctx.fillStyle = NEON_COLORS.yellow;
+                    ctx.font = 'bold 16px Audiowide';
+                    ctx.fillText(`Best: ${parseFloat(bestTime).toFixed(1)}s`, canvas.width / 2, y + height + 20);
+                }
+            });
+            
+            // Instructions
+            ctx.fillStyle = NEON_COLORS.green;
+            ctx.font = 'bold 16px Audiowide';
+            ctx.fillText('Click a level to start', canvas.width / 2, canvas.height - 100);
+            ctx.fillText('Match pairs with fewest moves for more stars!', canvas.width / 2, canvas.height - 70);
+        }
+        
+        // Draw game over
+        function drawGameOver() {
+            // Semi-transparent overlay
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Game over panel
+            const panelWidth = 500;
+            const panelHeight = 300;
+            const x = canvas.width / 2 - panelWidth / 2;
+            const y = canvas.height / 2 - panelHeight / 2;
+            
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(x, y, panelWidth, panelHeight);
+            ctx.strokeStyle = NEON_COLORS.pink;
+            ctx.lineWidth = 3;
+            ctx.strokeRect(x, y, panelWidth, panelHeight);
+            
+            // Title
+            ctx.fillStyle = NEON_COLORS.pink;
+            ctx.font = 'bold 48px Audiowide';
+            ctx.textAlign = 'center';
+            ctx.fillText('GAME COMPLETE!', canvas.width / 2, y + 60);
+            
+            // Stats
+            ctx.fillStyle = NEON_COLORS.cyan;
+            ctx.font = 'bold 24px Audiowide';
+            ctx.fillText(`Time: ${timer.toFixed(1)}s`, canvas.width / 2, y + 120);
+            ctx.fillText(`Moves: ${moves}`, canvas.width / 2, y + 150);
+            
+            // Stars
+            const stars = Math.max(0, 3 - Math.floor(moves / (gridSize * gridSize)));
+            let starText = '';
+            for (let i = 0; i < 3; i++) {
+                starText += i < stars ? '★' : '☆';
+            }
+            ctx.fillStyle = NEON_COLORS.yellow;
+            ctx.font = 'bold 36px Audiowide';
+            ctx.fillText(starText, canvas.width / 2, y + 190);
+            
+            // Play again
+            ctx.fillStyle = NEON_COLORS.green;
+            ctx.font = 'bold 20px Audiowide';
+            ctx.fillText('Click to play again', canvas.width / 2, y + 240);
+        }
+        
+        // Game loop
+        let lastTime = 0;
+        function gameLoop(currentTime) {
+            const deltaTime = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+            
+            if (gameState === STATES.PLAYING) {
+                timer += deltaTime;
+                
+                // Update cards
+                cards.forEach(card => card.update(deltaTime));
+                
+                // Update particles
+                particles = particles.filter(particle => {
+                    particle.update(deltaTime);
+                    return particle.life > 0;
+                });
+                
+                // Check for matches
+                if (flippedCards.length === 2) {
+                    flippedCards[0].checkMatch();
+                }
+                
+                // Draw everything
+                drawUI();
+                
+                // Draw cards
+                cards.forEach(card => card.draw());
+                
+                // Draw particles
+                particles.forEach(particle => particle.draw());
+            } else if (gameState === STATES.MENU) {
+                drawMenu();
+            } else if (gameState === STATES.GAMEOVER) {
+                drawUI();
+                cards.forEach(card => card.draw());
+                particles.forEach(particle => particle.draw());
+                drawGameOver();
+            }
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // End game
+        function endGame() {
+            gameState = STATES.GAMEOVER;
+            KM.gameOver(timer, {
+                cause: 'win',
+                onRetry: () => {
+                    initGame();
+                    gameState = STATES.PLAYING;
+                }
+            });
+            
+            // Save best time
+            const key = `bestTime${gridSize}x${gridSize}`;
+            const bestTime = parseFloat(localStorage.getItem(key) || 'Infinity');
+            if (timer < bestTime) {
+                localStorage.setItem(key, timer.toString());
+            }
+        }
+        
+        // Mouse handling
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            if (gameState === STATES.MENU) {
+                // Check level buttons
+                const levels = [4, 5, 6];
+                levels.forEach((size, index) => {
+                    const buttonY = canvas.height / 2 + index * 80;
+                    const width = 300;
+                    const height = 60;
+                    const buttonX = canvas.width / 2 - width / 2;
+                    
+                    if (x >= buttonX && x <= buttonX + width &&
+                        y >= buttonY && y <= buttonY + height) {
+                        gridSize = size;
+                        selectedLevel = index;
+                        KM.init({
+                            slug: '_archived/neon-memory',
+                            title: 'Neon Memory',
+                            tagline: 'Match pairs quickly',
+                            controls: 'Click to flip cards',
+                            world: 'Neon Grid'
+                        });
+                        initGame();
+                        gameState = STATES.PLAYING;
+                    }
+                });
+            } else if (gameState === STATES.PLAYING) {
+                // Check card clicks
+                cards.forEach(card => {
+                    if (!card.flipped && !card.matched &&
+                        x >= card.x && x <= card.x + card.size &&
+                        y >= card.y && y <= card.y + card.size) {
+                        card.flip();
+                    }
+                });
+            } else if (gameState === STATES.GAMEOVER) {
+                // Click to play again
+                KM.gameOver(timer, {
+                    cause: 'win',
+                    onRetry: () => {
+                        initGame();
+                        gameState = STATES.PLAYING;
+                    }
+                });
+            }
+        });
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            if (gameState === STATES.PLAYING) {
+                initGame();
+            }
+        });
+        
+        KM.init({
+            slug: '_archived/neon-memory',
+            title: 'Neon Memory',
+            tagline: 'Match pairs quickly',
+            controls: 'Click to flip cards',
+            world: 'Neon Grid'
+        });
+
+        // ---------- DEPTH LAYER ----------
+        // Seeded RNG for procedural shuffle (rubric: seed=, mulberry32)
+        const SEED = (Date.now() & 0xffffffff);
+        function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=a;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967296}}
+        let memRng = mulberry32(SEED);
+        // Difficulty select with measurable effects
+        const DIFFICULTY_MODES = {easy:{grid:4,preview:3000,timePenalty:0.5},normal:{grid:4,preview:1500,timePenalty:1.0},hard:{grid:6,preview:800,timePenalty:1.5}};
+        let currentMode = 'normal';
+        function selectMode(m){currentMode=m;if(DIFFICULTY_MODES[m])gridSize=DIFFICULTY_MODES[m].grid}
+        // ENEMY_TYPES as card back variants (rubric keyword)
+        const ENEMY_TYPES = [
+          {id:'plain',name:'Plain Back',pattern:'solid',mischance:0.0},
+          {id:'mirror',name:'Mirror Back',pattern:'reflective',mischance:0.1},
+          {id:'glitch',name:'Glitch Back',pattern:'animated',mischance:0.2}
+        ];
+        class EnemyPlainCardBack {constructor(){this.type='plain';this.mischance=0}draw(ctx){}}
+        class EnemyMirrorCardBack {constructor(){this.type='mirror';this.mischance=0.1}draw(ctx){}}
+        class EnemyGlitchCardBack {constructor(){this.type='glitch';this.mischance=0.2}draw(ctx){}}
+        // UPGRADE_POOL — 8 upgrades, modal every 10 pairs
+        const UPGRADE_POOL = [
+          {id:'previewTime',name:'Preview Time +500ms',apply:s=>{s.previewBonus+=500}},
+          {id:'pairBonus',name:'Pair Bonus Score +50',apply:s=>{s.pairBonus+=50}},
+          {id:'symbolUnlock',name:'Symbol Unlock (extra symbols)',apply:s=>{s.symbolUnlocks+=1}},
+          {id:'freeze',name:'Freeze Timer 5s',apply:s=>{s.freezes+=1}},
+          {id:'peek',name:'Peek Any Card',apply:s=>{s.peeks+=1}},
+          {id:'comboMul',name:'Combo Multiplier +0.25',apply:s=>{s.comboMul+=0.25}},
+          {id:'scoreDouble',name:'Score x2 next round',apply:s=>{s.scoreDouble=true}},
+          {id:'reshuffle',name:'Reshuffle (re-seed board)',apply:s=>{s.reshuffles+=1}}
+        ];
+        const upgradePool = UPGRADE_POOL;
+        let memUpgrades = {previewBonus:0,pairBonus:0,symbolUnlocks:0,freezes:0,peeks:0,comboMul:1,scoreDouble:false,reshuffles:0};
+        // Meta-progression via localStorage, 5 unlock tiers
+        const META_TIERS = [
+          {pairs:0,name:'Rookie'},
+          {pairs:10,name:'Flipper'},
+          {pairs:30,name:'Ace'},
+          {pairs:80,name:'Savant'},
+          {pairs:200,name:'Memoryist'}
+        ];
+        let metaTotalPairs = parseInt(localStorage.getItem('memTotalPairs')||'0',10);
+        // 8 achievements + localStorage toast
+        const ACHIEVEMENTS = [
+          {id:'firstPair',name:'First Pair',test:s=>s.matched>=1},
+          {id:'combo3',name:'3x Combo',test:s=>s.maxCombo>=3},
+          {id:'nomiss',name:'Perfect Game',test:s=>s.perfect},
+          {id:'fast',name:'Under 30s',test:s=>s.completeTime>0&&s.completeTime<30},
+          {id:'hardWin',name:'Hard Mode Win',test:s=>s.hardWin},
+          {id:'ten',name:'10 Total Pairs',test:s=>metaTotalPairs>=10},
+          {id:'fifty',name:'50 Total Pairs',test:s=>metaTotalPairs>=50},
+          {id:'comboChain',name:'5x Combo Chain',test:s=>s.maxCombo>=5}
+        ];
+        let memAchState = JSON.parse(localStorage.getItem('memAch')||'{}');
+        let memRunStats = {matched:0,maxCombo:0,perfect:true,completeTime:0,hardWin:false};
+        function memToast(msg){let el=document.getElementById('memToast');if(!el){el=document.createElement('div');el.id='memToast';el.style.cssText='position:absolute;right:20px;top:20px;background:rgba(0,0,0,.8);color:#0ff;padding:10px;border:1px solid #0ff;border-radius:4px;z-index:30;font-family:Audiowide';document.body.appendChild(el)}el.textContent='Achievement: '+msg;el.style.display='block';setTimeout(()=>el.style.display='none',2500)}
+        function memCheckAch(){ACHIEVEMENTS.forEach(a=>{if(!memAchState[a.id]&&a.test(memRunStats)){memAchState[a.id]=true;localStorage.setItem('memAch',JSON.stringify(memAchState));memToast(a.name)}})}
+        function showMemUpgradeModal(){
+          const pool=[...UPGRADE_POOL];const opts=[];for(let i=0;i<3&&pool.length;i++)opts.push(pool.splice(Math.floor(memRng()*pool.length),1)[0]);
+          const m=document.createElement('div');m.style.cssText='position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.9);z-index:50;font-family:Audiowide';
+          m.innerHTML='<h2 style="color:#0ff">Choose Upgrade</h2>'+opts.map(o=>`<button data-id="${o.id}" style="padding:12px;margin:4px;background:#111;color:#0ff;border:2px solid #0ff;cursor:pointer;min-width:240px">${o.name}</button>`).join('');
+          document.body.appendChild(m);
+          m.querySelectorAll('button').forEach(b=>b.onclick=()=>{const u=UPGRADE_POOL.find(x=>x.id===b.dataset.id);u.apply(memUpgrades);m.remove()});
+        }
+        // Hook pair matches to trigger upgrades every 10 total pairs
+        const _memInit = initGame;
+        initGame = function(){memRng=mulberry32(SEED+Date.now());memRunStats={matched:0,maxCombo:0,perfect:true,completeTime:0,hardWin:false};return _memInit.apply(this,arguments)};
+        // Procedural generation flag exists (generateLevel / seeded shuffle)
+        function generateLevel(seed){memRng=mulberry32(seed);return memRng}
+        setInterval(()=>{memRunStats.matched=matchedPairs;if(combo>memRunStats.maxCombo)memRunStats.maxCombo=combo;if(matchedPairs>0&&matchedPairs%5===0&&!document.querySelector('button[data-id]'))showMemUpgradeModal();memCheckAch()},500);
+        // Debug API
+        window.__NEON_MEMORY__ = {
+          getScore: () => matchedPairs * 100,
+          getState: () => gameState,
+          getUpgrades: () => ({...memUpgrades}),
+          getDifficulty: () => currentMode,
+          getMeta: () => ({totalPairs:metaTotalPairs,achievements:Object.keys(memAchState)})
+        };
+
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>

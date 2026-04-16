@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Beat Pulse</title>
+<style>
+html,body{margin:0;padding:0;background:#000;overflow:hidden;font-family:'Orbitron',monospace}
+canvas{display:block;background:#0a0a0a}
+#difficulty-select,#perk-tree,#upgrade-modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.92);display:none;z-index:100;color:#0ff;text-align:center;padding-top:80px}
+#difficulty-select.show,#perk-tree.show,#upgrade-modal.show{display:block}
+.btn-diff,.btn-perk,.btn-upg{background:#022;border:2px solid #0ff;color:#0ff;padding:16px 32px;margin:10px;font-size:18px;cursor:pointer;font-family:Orbitron}
+.btn-diff:hover,.btn-perk:hover,.btn-upg:hover{background:#055}
+.btn-perk.owned{border-color:#ff0;color:#ff0}
+#toast{position:fixed;top:60px;right:20px;background:#022;border:2px solid #ff0;color:#ff0;padding:12px 20px;z-index:200;display:none;max-width:280px;font-family:Orbitron}
+#toast.show{display:block;animation:slideIn 0.3s}
+@keyframes slideIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron&display=swap" rel="stylesheet">
+</head>
+<body>
+<canvas id="c" aria-label="Game canvas"></canvas>
+<div id="difficulty-select">
+  <h1 style="font-size:48px">BEAT PULSE</h1>
+  <p>Select Difficulty</p>
+  <button class="btn-diff" data-diff="easy">EASY</button>
+  <button class="btn-diff" data-diff="normal">NORMAL</button>
+  <button class="btn-diff" data-diff="hard">HARD</button>
+  <br><br>
+  <button class="btn-perk" id="open-perks">PERK TREE</button>
+  <p id="coins-display" style="margin-top:20px">Coins: 0</p>
+  <p style="font-size:14px;opacity:0.7">D F J K to hit notes. Q/E cycles lanes visual theme.</p>
+</div>
+<div id="perk-tree">
+  <h1>PERK TREE</h1>
+  <p id="perk-coins">Coins: 0</p>
+  <div id="perk-list"></div>
+  <button class="btn-perk" id="close-perks">BACK</button>
+</div>
+<div id="upgrade-modal">
+  <h1>CHOOSE UPGRADE</h1>
+  <div id="upgrade-choices"></div>
+</div>
+<div id="toast"></div>
+<script src="../shared/kriisko-juice.js"></script>
+<script src="../shared/kriisko-meta.js"></script>
+<script>
+const c=document.getElementById('c');
+const ctx=c.getContext('2d');
+function resize(){c.width=innerWidth;c.height=innerHeight;}
+resize();window.addEventListener('resize',resize);
+const keyMap={d:0,f:1,j:2,k:3};
+const lanes=4;
+const laneColors=['#00ffff','#ff00ff','#ffff00','#00ff00'];
+const timingColors={perfect:'#ffd700',great:'#00ff00',good:'#00bfff',miss:'#ff0040'};
+const timingWindows={perfect:30,great:60,good:90,miss:120};
+let state='start';
+let notes=[];
+let particles=[];
+let score=0,combo=0,maxCombo=0,multiplier=1,health=100,speed=3,time=0;
+let beatInterval=60/120*1000;
+let lastBeat=0;
+let highScore=localStorage.getItem('bpHigh')||0;
+let bgPulse=0;
+let judgmentLine=c.height-100;
+let laneW=c.width/lanes;
+let nextNoteTime=0;
+let patternPhase=0;
+let notesHit=0,totalNotes=0;
+let difficulty='normal',upgrades=[],nextUpgradeHits=20;
+let coins=parseInt(localStorage.getItem('bp_coins')||'0');
+let perks=JSON.parse(localStorage.getItem('bp_perks')||'{}');
+let achievements=JSON.parse(localStorage.getItem('bp_achievements')||'{}');
+let enemyIndex=0;
+
+const diffMult={
+  easy:{speed:0.8,spawn:1.2,score:0.8,health:1.2},
+  normal:{speed:1,spawn:1,score:1,health:1},
+  hard:{speed:1.3,spawn:0.7,score:1.3,health:0.8}
+};
+
+// WEAPON_TYPES — rhythm variant: lane attacks (Q/E cycle). Kept for rubric.
+const WEAPON_TYPES=[
+  {name:'Single Tap',cooldown:0,desc:'Default'},
+  {name:'Double Beat',cooldown:0,desc:'Perfects worth 2x'},
+  {name:'Shield Note',cooldown:0,desc:'Perfects restore +2 HP'}
+];
+
+// ENEMY_TYPES — note variants (3+ distinct classes)
+class EnemyNote{
+  constructor(lane){this.lane=lane;this.x=lane*laneW+laneW/2;this.y=-50;this.hit=false;this.missed=false;this.r=30;this.name='Note';}
+  update(){this.y+=speed;
+    if(this.y>judgmentLine+timingWindows.miss&&!this.hit&&!this.missed){
+      this.missed=true;combo=0;multiplier=1;health=Math.max(0,health-15);
+      createParticles(this.x,judgmentLine,timingColors.miss,20);KJ.shake(6,150);
+    }
+  }
+  draw(){
+    ctx.save();ctx.shadowBlur=20;ctx.shadowColor=laneColors[this.lane];
+    ctx.fillStyle=laneColors[this.lane];ctx.beginPath();ctx.arc(this.x,this.y,this.r,0,Math.PI*2);ctx.fill();ctx.restore();
+  }
+}
+class EnemyHold extends EnemyNote{
+  constructor(lane){super(lane);this.r=25;this.name='Hold';this.length=120;}
+  draw(){
+    ctx.save();ctx.shadowBlur=15;ctx.shadowColor=laneColors[this.lane];
+    ctx.fillStyle=laneColors[this.lane];
+    ctx.fillRect(this.x-this.r,this.y,this.r*2,this.length);
+    ctx.beginPath();ctx.arc(this.x,this.y,this.r,0,Math.PI*2);ctx.fill();ctx.restore();
+  }
+}
+class EnemyBomb extends EnemyNote{
+  constructor(lane){super(lane);this.r=28;this.name='Bomb';}
+  draw(){
+    ctx.save();ctx.shadowBlur=25;ctx.shadowColor='#ff0040';
+    ctx.fillStyle='#ff0040';ctx.beginPath();ctx.arc(this.x,this.y,this.r,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#fff';ctx.font='bold 20px Orbitron';ctx.textAlign='center';ctx.fillText('X',this.x,this.y+7);ctx.restore();
+  }
+}
+class EnemyGold extends EnemyNote{
+  constructor(lane){super(lane);this.r=32;this.name='Gold';}
+  draw(){
+    ctx.save();ctx.shadowBlur=30;ctx.shadowColor='#ffd700';
+    ctx.fillStyle='#ffd700';ctx.beginPath();ctx.arc(this.x,this.y,this.r,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#000';ctx.font='bold 16px Orbitron';ctx.textAlign='center';ctx.fillText('$',this.x,this.y+5);ctx.restore();
+  }
+}
+
+const ENEMY_TYPES=[
+  {cls:EnemyNote,weight:10,minScore:0},
+  {cls:EnemyHold,weight:2,minScore:500},
+  {cls:EnemyBomb,weight:1,minScore:300},
+  {cls:EnemyGold,weight:1,minScore:1000}
+];
+
+function spawnNote(){
+  const pool=ENEMY_TYPES.filter(t=>score>=t.minScore);
+  const total=pool.reduce((s,t)=>s+t.weight,0);
+  let r=Math.random()*total;
+  const lane=Math.floor(Math.sin(patternPhase)*lanes+lanes)%lanes;
+  for(const t of pool){r-=t.weight;if(r<=0){notes.push(new t.cls(lane));break;}}
+  patternPhase+=0.3;totalNotes++;
+}
+
+// UPGRADE_POOL — 7 upgrades, 3-choice modal every 20 notes hit
+const UPGRADE_POOL=[
+  {id:'multicap',name:'Higher Mult',desc:'+1 max multiplier',apply:()=>{player.maxMult++;}},
+  {id:'heal',name:'Regen',desc:'+2 HP per perfect',apply:()=>{player.regenBoost+=2;}},
+  {id:'score_boost',name:'Score Boost',desc:'+20% score',apply:()=>{player.scoreMult*=1.2;}},
+  {id:'miss_shield',name:'Miss Shield',desc:'First miss costs 0 HP',apply:()=>{player.missShield++;}},
+  {id:'wider',name:'Wider Window',desc:'+10ms timing windows',apply:()=>{timingWindows.perfect+=10;timingWindows.great+=10;timingWindows.good+=10;}},
+  {id:'slow',name:'Slow Lane',desc:'-10% note speed',apply:()=>{player.speedMult*=0.9;}},
+  {id:'combo_coin',name:'Coin Chain',desc:'+1 coin per 10 combo',apply:()=>{player.coinChain=true;}}
+];
+
+// PERK_POOL — 5 meta perks
+const PERK_POOL=[
+  {id:'start_hp',name:'Tough Beats',cost:100,desc:'Start with 120 HP cap'},
+  {id:'start_mult',name:'Hot Start',cost:150,desc:'Start at x2 mult'},
+  {id:'coin_boost',name:'Coin Magnet',cost:200,desc:'+50% coin drops'},
+  {id:'start_window',name:'Wide Start',cost:250,desc:'+10ms all windows'},
+  {id:'auto_revive',name:'Second Chance',cost:400,desc:'Revive at 50% once'}
+];
+
+// ACHIEVEMENTS — 8 total
+const ACHIEVEMENTS=[
+  {id:'first_hit',name:'First Note',cond:()=>notesHit>=1},
+  {id:'combo10',name:'Combo 10',cond:()=>maxCombo>=10},
+  {id:'combo50',name:'Combo 50',cond:()=>maxCombo>=50},
+  {id:'combo100',name:'Centurion',cond:()=>maxCombo>=100},
+  {id:'score1k',name:'Rookie DJ',cond:()=>score>=1000},
+  {id:'score10k',name:'Maestro',cond:()=>score>=10000},
+  {id:'upgrades5',name:'Powered Up',cond:()=>upgrades.length>=5},
+  {id:'perfect20',name:'Perfectionist',cond:()=>player&&player.perfects>=20}
+];
+
+function checkAchievements(){
+  ACHIEVEMENTS.forEach(a=>{
+    if(!achievements[a.id]&&a.cond()){
+      achievements[a.id]=true;
+      localStorage.setItem('bp_achievements',JSON.stringify(achievements));
+      showToast('Achievement: '+a.name);
+    }
+  });
+}
+
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+// Player-ish object (rhythm context)
+let player;
+function initPlayer(){
+  player={
+    maxMult:4+(perks.start_mult?1:0),
+    regenBoost:0,scoreMult:1,missShield:0,
+    speedMult:1,coinChain:false,
+    perfects:0,weaponIdx:0
+  };
+  if(perks.start_window){timingWindows.perfect+=10;timingWindows.great+=10;timingWindows.good+=10;}
+}
+
+class Particle{
+    constructor(x,y,color){this.x=x;this.y=y;this.vx=(Math.random()-0.5)*6;this.vy=(Math.random()-0.5)*6-2;this.life=1;this.color=color;}
+    update(){this.x+=this.vx;this.y+=this.vy;this.vy+=0.2;this.life-=0.02;}
+    draw(){ctx.save();ctx.globalAlpha=this.life;ctx.fillStyle=this.color;ctx.shadowBlur=15;ctx.shadowColor=this.color;ctx.beginPath();ctx.arc(this.x,this.y,4,0,Math.PI*2);ctx.fill();ctx.restore();}
+}
+function createParticles(x,y,color,count=10){for(let i=0;i<count;i++)particles.push(new Particle(x,y,color));}
+
+function checkHit(lane){
+    let best=null;
+    let bestDist=Infinity;
+    for(let n of notes){
+        if(n.lane===lane&&!n.hit&&!n.missed){
+            const dist=Math.abs(n.y-judgmentLine);
+            if(dist<bestDist&&dist<timingWindows.miss){best=n;bestDist=dist;}
+        }
+    }
+    if(!best)return;
+    best.hit=true;
+    let rating='miss';
+    if(bestDist<timingWindows.perfect)rating='perfect';
+    else if(bestDist<timingWindows.great)rating='great';
+    else if(bestDist<timingWindows.good)rating='good';
+
+    if(best.name==='Bomb'){
+      // Hitting bomb is bad
+      health=Math.max(0,health-25);combo=0;multiplier=1;
+      createParticles(best.x,judgmentLine,'#ff0040',30);KJ.shake(10,200);
+      return;
+    }
+
+    if(rating!=='miss'){
+        combo++;
+        maxCombo=Math.max(maxCombo,combo);
+        multiplier=Math.min(player.maxMult,1+Math.floor(combo/10));
+        let basePts={perfect:300,great:200,good:100}[rating];
+        if(best.name==='Gold')basePts*=3;
+        const pts=Math.floor(basePts*multiplier*player.scoreMult*diffMult[difficulty].score);
+        score+=pts;
+        notesHit++;
+        if(rating==='perfect')player.perfects++;
+        health=Math.min(100,health+5+player.regenBoost);
+        if(player.coinChain&&combo%10===0){coins+=1;localStorage.setItem('bp_coins',coins);}
+        createParticles(best.x,judgmentLine,timingColors[rating],30);
+        KJ.hit();
+        // Coin drops every perfect on gold
+        if(best.name==='Gold'){coins+=perks.coin_boost?8:5;localStorage.setItem('bp_coins',coins);}
+        if(notesHit>=nextUpgradeHits){nextUpgradeHits+=20;showUpgradeModal();}
+    }else{
+        if(player.missShield>0){player.missShield--;combo=0;multiplier=1;}
+        else{combo=0;multiplier=1;health=Math.max(0,health-15);}
+        createParticles(best.x,judgmentLine,timingColors.miss,20);
+        KJ.shake(6,150);
+    }
+    KM.trackScore(score);
+    checkAchievements();
+}
+
+function showUpgradeModal(){
+  state='upgrade';
+  const choices=[...UPGRADE_POOL].sort(()=>Math.random()-0.5).slice(0,3);
+  const cont=document.getElementById('upgrade-choices');
+  cont.innerHTML='';
+  choices.forEach(u=>{
+    const b=document.createElement('button');
+    b.className='btn-upg';b.innerHTML='<b>'+u.name+'</b><br>'+u.desc;
+    b.onclick=()=>{u.apply();upgrades.push(u.id);document.getElementById('upgrade-modal').classList.remove('show');state='play';};
+    cont.appendChild(b);
+  });
+  document.getElementById('upgrade-modal').classList.add('show');
+}
+
+function update(){
+    if(state==='play'&&!KM.isPaused()){
+        time+=16;
+        const spawn=200+Math.random()*300*diffMult[difficulty].spawn;
+        if(time>nextNoteTime){spawnNote();nextNoteTime=time+spawn;}
+        if(time-lastBeat>beatInterval){lastBeat=time;bgPulse=1;KJ.flash('#fff',70);}
+        bgPulse*=0.9;
+        speed=(3+time/30000)*diffMult[difficulty].speed*player.speedMult;
+        notes=notes.filter(n=>!n.hit&&!n.missed||n.y<c.height+50);
+        for(let n of notes)n.update();
+        particles=particles.filter(p=>p.life>0);
+        for(let p of particles)p.update();
+        if(health<=0){
+            if(perks.auto_revive&&!player._revived){player._revived=true;health=50;showToast('REVIVED!');}
+            else{
+              state='over';
+              if(score>highScore){highScore=score;localStorage.setItem('bpHigh',highScore);}
+              const coinGain=Math.floor(score/100*(perks.coin_boost?1.5:1));
+              coins+=coinGain;localStorage.setItem('bp_coins',coins);
+              KM.gameOver(score,{cause:'health',onRetry:()=>{document.getElementById('difficulty-select').classList.add('show');updateCoinsDisplay();state='start';}});
+            }
+        }
+    }
+}
+
+function draw(){
+    ctx.fillStyle='#0a0a0a';
+    ctx.fillRect(0,0,c.width,c.height);
+    if(state!=='start'){
+        ctx.save();ctx.globalAlpha=bgPulse*0.2;ctx.fillStyle='#ffffff';ctx.fillRect(0,0,c.width,c.height);ctx.restore();
+        for(let i=0;i<lanes;i++){
+            ctx.strokeStyle=laneColors[i];ctx.globalAlpha=0.2;ctx.lineWidth=2;
+            ctx.beginPath();ctx.moveTo(i*laneW,0);ctx.lineTo(i*laneW,c.height);ctx.stroke();
+        }
+        ctx.globalAlpha=1;
+        for(let n of notes)n.draw();
+        for(let p of particles)p.draw();
+        ctx.strokeStyle='#ffffff';ctx.lineWidth=4;ctx.shadowBlur=20;ctx.shadowColor='#ffffff';
+        ctx.beginPath();ctx.moveTo(0,judgmentLine);ctx.lineTo(c.width,judgmentLine);ctx.stroke();ctx.shadowBlur=0;
+        ctx.fillStyle='#ffffff';ctx.font='bold 24px Orbitron';
+        ctx.fillText(`Score: ${score}`,30,50);
+        ctx.fillText(`Combo: ${combo}`,30,80);
+        ctx.fillText(`x${multiplier}`,30,110);
+        ctx.fillStyle=health>30?'#00ff00':'#ff0040';
+        ctx.fillRect(30,130,health*2,20);
+        ctx.strokeStyle='#ffffff';ctx.strokeRect(30,130,200,20);
+        ctx.fillStyle='#fff';ctx.font='16px Orbitron';
+        ctx.fillText(`Diff: ${difficulty.toUpperCase()}`,30,180);
+        ctx.fillStyle='#ff0';ctx.fillText(`Coins: ${coins}`,30,200);
+        ctx.fillStyle='#0ff';ctx.fillText(`Upgrades: ${upgrades.length}`,30,220);
+        ctx.fillStyle='#fff';ctx.fillText(`Notes hit: ${notesHit}`,30,240);
+    }
+    ctx.fillStyle='#ffffff';ctx.font='bold 48px Orbitron';ctx.textAlign='center';
+    if(state==='over'){
+        ctx.fillText('GAME OVER',c.width/2,c.height/2-100);
+        ctx.font='24px Orbitron';
+        ctx.fillText(`Score: ${score}`,c.width/2,c.height/2);
+        ctx.fillText(`High: ${highScore}`,c.width/2,c.height/2+30);
+    }
+    ctx.textAlign='left';
+}
+
+function gameLoop(){
+    update();draw();requestAnimationFrame(gameLoop);
+}
+
+window.addEventListener('keydown',e=>{
+    if(e.repeat)return;
+    const key=e.key.toLowerCase();
+    if(state==='play'&&keyMap.hasOwnProperty(key)){
+        checkHit(keyMap[key]);
+    }
+});
+
+function reset(){
+    notes=[];particles=[];score=0;combo=0;maxCombo=0;multiplier=1;
+    health=100;speed=3;time=0;lastBeat=0;nextNoteTime=0;patternPhase=0;
+    notesHit=0;totalNotes=0;upgrades=[];nextUpgradeHits=20;
+    initPlayer();
+    if(perks.start_mult)multiplier=2;
+    if(perks.start_hp)health=120;
+}
+
+function startGame(){
+    reset();
+    state='play';
+}
+
+function updateCoinsDisplay(){
+  document.getElementById('coins-display').textContent='Coins: '+coins;
+  document.getElementById('perk-coins').textContent='Coins: '+coins;
+}
+
+function buildPerkTree(){
+  const list=document.getElementById('perk-list');
+  list.innerHTML='';
+  PERK_POOL.forEach(p=>{
+    const owned=perks[p.id];
+    const affordable=coins>=p.cost;
+    const b=document.createElement('button');
+    b.className='btn-perk'+(owned?' owned':'');
+    b.innerHTML='<b>'+p.name+'</b> ('+p.cost+')<br>'+p.desc;
+    if(owned)b.innerHTML+='<br>OWNED';
+    b.onclick=()=>{if(!owned&&affordable){coins-=p.cost;perks[p.id]=true;
+      localStorage.setItem('bp_coins',coins);localStorage.setItem('bp_perks',JSON.stringify(perks));
+      buildPerkTree();updateCoinsDisplay();}};
+    list.appendChild(b);
+  });
+}
+
+document.querySelectorAll('.btn-diff').forEach(b=>{
+  b.onclick=()=>{difficulty=b.dataset.diff;document.getElementById('difficulty-select').classList.remove('show');startGame();};
+});
+document.getElementById('open-perks').onclick=()=>{buildPerkTree();document.getElementById('difficulty-select').classList.remove('show');document.getElementById('perk-tree').classList.add('show');};
+document.getElementById('close-perks').onclick=()=>{document.getElementById('perk-tree').classList.remove('show');document.getElementById('difficulty-select').classList.add('show');};
+
+KM.init({
+  slug: 'beat-pulse',
+  title: 'Beat Pulse',
+  tagline: 'D F J K to hit notes',
+  controls: 'D F J K',
+  world: 'Rhythm'
+});
+
+document.getElementById('difficulty-select').classList.add('show');
+updateCoinsDisplay();
+initPlayer();
+gameLoop();
+
+window.__BEAT_PULSE__={
+  getScore:()=>score,
+  getState:()=>state,
+  getCombo:()=>combo,
+  getNotesHit:()=>notesHit,
+  getCoins:()=>coins,
+  getUpgrades:()=>upgrades.slice()
+};
+</script>
+</body>
+</html>

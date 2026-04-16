@@ -3,17 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Snake · v3</title>
+  <title>Snake · v4 Depth</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Audiowide&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; }
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      overscroll-behavior: none;
-    }
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; }
     body {
       min-height: 100vh;
       display: flex;
@@ -21,27 +17,31 @@
       align-items: center;
       justify-content: center;
       background: #1a1a2e;
-      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-family: 'Audiowide', sans-serif;
       color: #eee;
     }
-    h1 {
-      margin: 0 0 0.5rem;
-      font-size: 1.75rem;
-      font-weight: 600;
-    }
+    h1 { margin: 0 0 0.5rem; font-size: 1.75rem; font-weight: 600; }
     .score-row {
       display: flex;
       align-items: center;
-      gap: 1rem;
-      margin-bottom: 0.5rem;
+      gap: 0.75rem;
+      margin-bottom: 0.35rem;
+      flex-wrap: wrap;
+      justify-content: center;
     }
-    .score { font-size: 1.1rem; }
+    .chip {
+      font-size: 0.8rem;
+      padding: 3px 8px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .chip.gold { color: #ffd54f; border-color: rgba(255,213,79,0.4); }
+    .chip.cyan { color: #00e5ff; border-color: rgba(0,229,255,0.4); }
+    .chip.rose { color: #ff4081; border-color: rgba(255,64,129,0.4); }
+    .score { font-size: 1.05rem; }
     .hint { font-size: 0.85rem; opacity: 0.8; }
-    #gameContainer,
-    canvas {
-      max-width: 100vw;
-      max-height: 100vh;
-    }
+    #gameContainer, canvas { max-width: 100vw; max-height: 100vh; }
     #game-canvas {
       display: block;
       background: #16213e;
@@ -52,69 +52,131 @@
       height: min(400px, calc(100vw - 10px));
     }
     .overlay {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0,0,0,0.75);
-      border-radius: 4px;
-      z-index: 10;
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.82);
+      border-radius: 4px; z-index: 10;
+      padding: 1rem;
     }
     .overlay h2 { margin: 0 0 0.5rem; }
-    .overlay p { margin: 0 0 1rem; opacity: 0.9; }
+    .overlay p { margin: 0 0 1rem; opacity: 0.9; font-size: 0.85rem; text-align: center; }
     .overlay button {
-      padding: 0.6rem 1.5rem;
-      font-size: 1rem;
+      padding: 0.55rem 1.25rem;
+      font-size: 0.95rem;
       cursor: pointer;
-      background: #e94560;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
+      background: #e94560; color: #fff;
+      border: none; border-radius: 6px;
       font-weight: 600;
+      font-family: inherit;
     }
     .overlay button:hover { background: #ff6b6b; }
-    .wrap {
-      position: relative;
-      display: inline-block;
-      max-width: min(400px, calc(100vw - 10px));
-      max-height: 100vh;
+    .diff-row { display: flex; gap: 6px; margin-bottom: 1rem; }
+    .diff-btn {
+      padding: 0.4rem 0.75rem; font-size: 0.8rem;
+      cursor: pointer; background: #0f3460; color: #fff;
+      border: 2px solid transparent; border-radius: 6px;
+      font-family: inherit;
+    }
+    .diff-btn.active { border-color: #e94560; background: #16315f; }
+    .upgrade-card {
+      background: #0f3460;
+      border: 2px solid #2a4a7f;
+      border-radius: 8px;
+      padding: 0.6rem 0.8rem;
+      margin: 4px 0;
+      cursor: pointer;
+      min-width: 220px;
+      text-align: left;
+      color: #fff;
+      font-family: inherit;
+    }
+    .upgrade-card:hover { border-color: #e94560; background: #16315f; }
+    .upgrade-card .uname { font-size: 0.95rem; color: #ffd54f; display: block; margin-bottom: 3px; }
+    .upgrade-card .udesc { font-size: 0.72rem; opacity: 0.8; }
+    .ach-toast {
+      position: fixed; top: 18px; right: 18px;
+      background: linear-gradient(135deg,#0f3460,#e94560);
+      padding: 10px 14px; border-radius: 8px;
+      color: #fff; font-family: 'Audiowide', sans-serif; font-size: 0.9rem;
+      box-shadow: 0 4px 20px rgba(233,69,96,0.5);
+      z-index: 100; pointer-events: none;
+      animation: slideIn 2.5s ease-out forwards;
+    }
+    @keyframes slideIn {
+      0% { transform: translateX(120%); opacity: 0; }
+      12% { transform: translateX(0); opacity: 1; }
+      85% { transform: translateX(0); opacity: 1; }
+      100% { transform: translateX(120%); opacity: 0; }
+    }
+    .wrap { position: relative; display: inline-block; max-width: min(400px, calc(100vw - 10px)); max-height: 100vh; }
+    .vignette {
+      position: absolute; inset: 0;
+      background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)),
+                  linear-gradient(to right, #000, #111);
+      opacity: 0.2; pointer-events: none;
     }
   </style>
 </head>
 <body data-mobile-controls="swipe">
-  <h1>Snake <span style="font-size:0.6em; opacity:0.7">v3</span></h1>
+  <h1>Snake <span style="font-size:0.6em; opacity:0.7">v4</span></h1>
   <div class="score-row">
     <span class="score">Score: <strong id="score">0</strong></span>
-    <span class="hint">Arrow keys or WASD</span>
+    <span class="chip gold" id="coin-chip">&#9733; 0</span>
+    <span class="chip cyan" id="best-chip">Best 0</span>
+    <span class="chip rose" id="diff-chip">Normal</span>
   </div>
+  <div class="score-row"><span class="hint" id="controls-hint">Arrow keys / WASD</span></div>
   <div class="wrap" id="gameContainer">
-    <canvas id="game-canvas" width="400" height="400"></canvas>
+    <canvas id="game-canvas" width="400" height="400" aria-label="Game canvas"></canvas>
+    <div class="vignette"></div>
     <div id="start-overlay" class="overlay">
-      <h2>Ready?</h2>
-      <p>Use arrow keys or WASD to move.</p>
+      <h2>Snake</h2>
+      <p>Choose difficulty and start.<br>Upgrades every 50 points.</p>
+      <div class="diff-row" id="diff-row">
+        <button class="diff-btn" data-diff="easy">Easy</button>
+        <button class="diff-btn active" data-diff="normal">Normal</button>
+        <button class="diff-btn" data-diff="hard">Hard</button>
+      </div>
       <button id="start-btn">Start game</button>
-      <button id="scores-btn" style="margin-top:8px;padding:0.4rem 1rem;font-size:0.9rem;cursor:pointer;background:#0f3460;color:#fff;border:none;border-radius:6px;">&#127942; Scores</button>
+      <button id="scores-btn" style="margin-top:8px;padding:0.4rem 1rem;font-size:0.85rem;cursor:pointer;background:#0f3460;color:#fff;border:none;border-radius:6px;">&#127942; Scores</button>
+    </div>
+    <div id="upgrade-overlay" class="overlay" style="display:none;">
+      <h2 style="color:#ffd54f;">Level Up!</h2>
+      <p>Pick one upgrade</p>
+      <div id="upgrade-choices"></div>
     </div>
     <div id="gameover-overlay" class="overlay" style="display: none;">
       <h2>Game over</h2>
-      <p>Score: <strong id="final-score">0</strong></p>
+      <p>Score: <strong id="final-score">0</strong><br><span id="coins-earned" style="color:#ffd54f;"></span></p>
       <button id="restart-btn">Play again</button>
     </div>
   </div>
 
+  <script src="../shared/kriisko-juice.js"></script>
+  <script src="../shared/kriisko-meta.js"></script>
+  <script src="../shared/leaderboard.js"></script>
+  <script src="../shared/mobile-controls.js"></script>
+  <script src="../shared/feedback.js"></script>
   <script>
     (function () {
+      const SLUG = 'snake';
       const canvas = document.getElementById('game-canvas');
       const gameContainer = document.getElementById('gameContainer');
       const ctx = canvas.getContext('2d');
       const scoreEl = document.getElementById('score');
       const finalScoreEl = document.getElementById('final-score');
+      const coinsEarnedEl = document.getElementById('coins-earned');
+      const coinChipEl = document.getElementById('coin-chip');
+      const bestChipEl = document.getElementById('best-chip');
+      const diffChipEl = document.getElementById('diff-chip');
       const startOverlay = document.getElementById('start-overlay');
       const gameoverOverlay = document.getElementById('gameover-overlay');
+      const upgradeOverlay = document.getElementById('upgrade-overlay');
+      const upgradeChoicesEl = document.getElementById('upgrade-choices');
       const startBtn = document.getElementById('start-btn');
       const restartBtn = document.getElementById('restart-btn');
+      const diffRow = document.getElementById('diff-row');
       const CANVAS_W = canvas.width;
       const CANVAS_H = canvas.height;
 
@@ -124,6 +186,86 @@
       const PAD_X = (canvas.width - COLS * CELL) / 2;
       const PAD_Y = (canvas.height - ROWS * CELL) / 2;
 
+      // ==== DIFFICULTY MODES ====
+      const DIFFICULTIES = {
+        easy:   { speed: 150, rateMod: 1.2, pointsMod: 1.0, name: 'Easy' },
+        normal: { speed: 120, rateMod: 1.0, pointsMod: 1.0, name: 'Normal' },
+        hard:   { speed: 85,  rateMod: 0.85, pointsMod: 1.5, name: 'Hard' }
+      };
+      let selectedMode = localStorage.getItem('kriisko:' + SLUG + ':difficulty') || 'normal';
+
+      // ==== ENEMY/OBSTACLE TYPES ====
+      class Obstacle {
+        constructor(x, y, type) { this.x = x; this.y = y; this.type = type; }
+      }
+      class EnemyWall extends Obstacle {
+        constructor(x, y) { super(x, y, 'wall'); this.color = '#8a8aff'; }
+      }
+      class EnemySpike extends Obstacle {
+        constructor(x, y) { super(x, y, 'spike'); this.color = '#ff4081'; this.ttl = 240; }
+      }
+      class EnemyMine extends Obstacle {
+        constructor(x, y) { super(x, y, 'mine'); this.color = '#ff9800'; this.pulse = 0; }
+      }
+      const ENEMY_TYPES = [
+        { name: 'wall',  ctor: EnemyWall,  afterScore: 80  },
+        { name: 'spike', ctor: EnemySpike, afterScore: 160 },
+        { name: 'mine',  ctor: EnemyMine,  afterScore: 240 }
+      ];
+
+      // ==== UPGRADE POOL ====
+      const UPGRADE_POOL = [
+        { id: 'speedReward', name: 'Adrenaline', desc: '+12% speed, +1 point per food' },
+        { id: 'doubleFood',  name: 'Double Feast', desc: 'Food value doubles' },
+        { id: 'shorterTail', name: 'Shed',          desc: 'Trim 3 segments now' },
+        { id: 'invincTicks', name: 'Ghost Form',   desc: '+60 invincibility ticks' },
+        { id: 'magnetFood',  name: 'Magnet',        desc: 'Food auto-pulls 2 cells' },
+        { id: 'boostPoints', name: 'Scholar',       desc: '+50% points per food' }
+      ];
+
+      // ==== ACHIEVEMENTS ====
+      const ACHIEVEMENTS = [
+        { id: 'first_food',   name: 'First Bite',       test: s => s.score >= 1 },
+        { id: 'score_50',     name: 'Fifty Club',       test: s => s.score >= 50 },
+        { id: 'score_150',    name: 'Centurion',        test: s => s.score >= 150 },
+        { id: 'long_tail',    name: 'Serpent King',     test: s => s.snakeLen >= 25 },
+        { id: 'hard_mode',    name: 'Hard Mode Hero',   test: s => s.mode === 'hard' && s.score >= 60 },
+        { id: 'no_upgrades',  name: 'Purist',           test: s => s.gameOver && s.upgradesChosen === 0 && s.score >= 40 },
+        { id: 'coin_collect', name: 'Hoarder',          test: s => s.totalCoins >= 100 },
+        { id: 'survive_120s', name: 'Marathoner',       test: s => s.elapsedSec >= 120 }
+      ];
+
+      // ==== META PROGRESSION via localStorage ====
+      function lget(k, def) { try { const v = localStorage.getItem('kriisko:' + SLUG + ':' + k); return v === null ? def : v; } catch (_) { return def; } }
+      function lset(k, v)   { try { localStorage.setItem('kriisko:' + SLUG + ':' + k, String(v)); } catch (_) {} }
+      function getCoins()   { return parseInt(lget('coins', '0'), 10) || 0; }
+      function addCoins(n)  { lset('coins', getCoins() + n); }
+      function getBest()    { return parseInt(lget('best',  '0'), 10) || 0; }
+      function setBest(n)   { if (n > getBest()) lset('best', n); }
+      function getUnlocked(){ try { return JSON.parse(lget('ach', '[]')); } catch (_) { return []; } }
+      function unlock(id, name) {
+        const arr = getUnlocked();
+        if (arr.includes(id)) return false;
+        arr.push(id);
+        lset('ach', JSON.stringify(arr));
+        toast('Achievement: ' + name);
+        return true;
+      }
+      function toast(txt) {
+        const el = document.createElement('div');
+        el.className = 'ach-toast';
+        el.textContent = txt;
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 2600);
+      }
+
+      function updateChips() {
+        coinChipEl.innerHTML = '&#9733; ' + getCoins();
+        bestChipEl.textContent = 'Best ' + getBest();
+        diffChipEl.textContent = DIFFICULTIES[selectedMode].name;
+      }
+
+      // ==== GAME STATE ====
       let snake = [];
       let food = { x: 0, y: 0 };
       let dir = { x: 1, y: 0 };
@@ -134,15 +276,47 @@
       let started = false;
       let startTime = 0;
       let tickCount = 0;
+      let invincTicks = 0;
+      let obstacles = [];
+      let upgrades = [];         // chosen upgrades this run
+      let nextUpgradeAt = 50;
+      let foodValue = 1;
+      let pointMult = 1.0;
+      let magnetRange = 0;
+      let runCoins = 0;
+      let paused = false;
+      let upgradesChosen = 0;
+      let gameOverCalled = false;
 
       function randCell() {
         return { x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS) };
       }
-
       function placeFood() {
         do {
           food = randCell();
-        } while (snake.some(s => s.x === food.x && s.y === food.y));
+        } while (snake.some(s => s.x === food.x && s.y === food.y)
+              || obstacles.some(o => o.x === food.x && o.y === food.y));
+      }
+      function spawnObstacle(cls) {
+        let tries = 12;
+        while (tries--) {
+          const c = randCell();
+          if (snake.some(s => s.x === c.x && s.y === c.y)) continue;
+          if (c.x === food.x && c.y === food.y) continue;
+          if (obstacles.some(o => o.x === c.x && o.y === c.y)) continue;
+          obstacles.push(new cls(c.x, c.y));
+          return;
+        }
+      }
+      function maybeSpawnObstacles() {
+        const mod = DIFFICULTIES[selectedMode].rateMod;
+        for (const et of ENEMY_TYPES) {
+          if (score >= et.afterScore && Math.random() < 0.035 * mod) {
+            spawnObstacle(et.ctor);
+          }
+        }
+        // cap
+        if (obstacles.length > 14) obstacles.splice(0, obstacles.length - 14);
       }
 
       function drawCell(x, y, fill) {
@@ -156,27 +330,38 @@
         ctx.fillStyle = '#16213e';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+        // obstacles
+        for (const o of obstacles) {
+          if (o.type === 'spike') o.ttl--;
+          if (o.type === 'mine') o.pulse = (o.pulse + 0.08) % (Math.PI * 2);
+          const a = o.type === 'mine' ? (0.7 + Math.sin(o.pulse) * 0.3) : 1;
+          ctx.globalAlpha = a;
+          drawCell(o.x, o.y, o.color);
+          ctx.globalAlpha = 1;
+        }
+        obstacles = obstacles.filter(o => o.type !== 'spike' || o.ttl > 0);
+
+        // snake
+        const invinc = invincTicks > 0;
         snake.forEach((seg, i) => {
           const isHead = i === snake.length - 1;
-          drawCell(seg.x, seg.y, isHead ? '#e94560' : '#0f3460');
+          drawCell(seg.x, seg.y, invinc ? '#00e5ff' : (isHead ? '#e94560' : '#0f3460'));
         });
-        drawCell(food.x, food.y, '#ffc107');
+        drawCell(food.x, food.y, foodValue >= 2 ? '#ffb300' : '#ffc107');
       }
 
       function fitToViewport() {
         const vw = window.innerWidth;
         const vh = window.innerHeight;
         const heading = document.querySelector('h1');
-        const scoreRow = document.querySelector('.score-row');
-        const uiHeight =
-          (heading ? heading.getBoundingClientRect().height : 0) +
-          (scoreRow ? scoreRow.getBoundingClientRect().height : 0) +
-          24;
+        const scoreRows = document.querySelectorAll('.score-row');
+        let uiHeight = heading ? heading.getBoundingClientRect().height : 0;
+        scoreRows.forEach(r => uiHeight += r.getBoundingClientRect().height);
+        uiHeight += 36;
         const availableHeight = Math.max(160, vh - uiHeight);
         const scale = Math.max(0.4, Math.min(vw / CANVAS_W, availableHeight / CANVAS_H, 1));
         const scaledW = Math.round(CANVAS_W * scale);
         const scaledH = Math.round(CANVAS_H * scale);
-
         gameContainer.style.width = scaledW + 'px';
         gameContainer.style.height = scaledH + 'px';
         canvas.style.width = scaledW + 'px';
@@ -186,82 +371,204 @@
         canvas.style.top = '0px';
       }
 
+      // ==== UPGRADE FLOW (chooseUpgrade / pickUpgrade) ====
+      function chooseUpgrade() {
+        if (paused) return;
+        paused = true;
+        if (loopId) { clearTimeout(loopId); loopId = null; }
+        // pick 3 distinct random upgrades
+        const pool = UPGRADE_POOL.slice();
+        for (let i = pool.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [pool[i], pool[j]] = [pool[j], pool[i]];
+        }
+        const choices = pool.slice(0, 3);
+        upgradeChoicesEl.innerHTML = '';
+        choices.forEach(u => {
+          const b = document.createElement('button');
+          b.className = 'upgrade-card';
+          b.innerHTML = '<span class="uname">' + u.name + '</span><span class="udesc">' + u.desc + '</span>';
+          b.addEventListener('click', () => pickUpgrade(u));
+          b.addEventListener('touchend', (e) => { e.preventDefault(); pickUpgrade(u); });
+          upgradeChoicesEl.appendChild(b);
+        });
+        upgradeOverlay.style.display = 'flex';
+      }
+      function pickUpgrade(u) {
+        upgrades.push(u.id);
+        upgradesChosen++;
+        applyUpgrade(u.id);
+        upgradeOverlay.style.display = 'none';
+        paused = false;
+        loopId = setTimeout(tick, speed);
+      }
+      function applyUpgrade(id) {
+        if (id === 'speedReward') { speed = Math.max(40, speed - 15); pointMult += 0.2; }
+        if (id === 'doubleFood')  { foodValue = 2; }
+        if (id === 'shorterTail') { for (let i = 0; i < 3 && snake.length > 3; i++) snake.shift(); }
+        if (id === 'invincTicks') { invincTicks += 60; }
+        if (id === 'magnetFood')  { magnetRange = Math.min(magnetRange + 2, 5); }
+        if (id === 'boostPoints') { pointMult += 0.5; }
+      }
+
+      function checkAchievements(opts) {
+        const stats = {
+          score, snakeLen: snake.length,
+          mode: selectedMode,
+          upgradesChosen,
+          totalCoins: getCoins(),
+          elapsedSec: Math.floor((Date.now() - startTime) / 1000),
+          gameOver: !!opts && !!opts.gameOver
+        };
+        const unlocked = getUnlocked();
+        for (const a of ACHIEVEMENTS) {
+          if (!unlocked.includes(a.id) && a.test(stats)) unlock(a.id, a.name);
+        }
+      }
+
       function tick() {
+        if (KM.isPaused() || paused) return;
         const head = snake[snake.length - 1];
         const neck = snake.length > 1 ? snake[snake.length - 2] : null;
-        // Never allow reversing into the neck (avoids instant death from a stale key)
         const wouldReverse = neck && (head.x + nextDir.x + COLS) % COLS === neck.x && (head.y + nextDir.y + ROWS) % ROWS === neck.y;
         if (!wouldReverse) dir = { ...nextDir };
         const nx = (head.x + dir.x + COLS) % COLS;
         const ny = (head.y + dir.y + ROWS) % ROWS;
 
-        // Grace: ignore self-collision for the first 2 moves so start can't insta-kill
         tickCount++;
         const inGrace = tickCount < 3;
-        if (!inGrace && snake.some(s => s.x === nx && s.y === ny)) {
-          gameOver();
-          return;
+
+        // obstacle hit
+        if (!inGrace && invincTicks <= 0) {
+          const hitObstacle = obstacles.find(o => o.x === nx && o.y === ny);
+          if (hitObstacle) { return gameOver('obstacle_' + hitObstacle.type); }
+        }
+        if (!inGrace && invincTicks <= 0 && snake.some(s => s.x === nx && s.y === ny)) {
+          return gameOver('self');
         }
 
         snake.push({ x: nx, y: ny });
+        let ate = false;
+        // magnet: food jump toward head if near
+        if (magnetRange > 0) {
+          const dx = Math.abs(nx - food.x), dy = Math.abs(ny - food.y);
+          if (dx + dy <= magnetRange) {
+            if (food.x < nx) food.x++; else if (food.x > nx) food.x--;
+            if (food.y < ny) food.y++; else if (food.y > ny) food.y--;
+          }
+        }
         if (nx === food.x && ny === food.y) {
-          score++;
+          const gain = Math.max(1, Math.round(foodValue * pointMult * DIFFICULTIES[selectedMode].pointsMod));
+          score += gain;
+          runCoins += 1;
           scoreEl.textContent = score;
+          KM.trackScore(score);
           placeFood();
+          maybeSpawnObstacles();
+          KJ.hit();
           if (speed > 60) speed -= 3;
+          ate = true;
         } else {
           snake.shift();
         }
+        if (invincTicks > 0) invincTicks--;
         draw();
+        KJ.shake(4, 100);
+
+        // upgrade milestone every 50 points
+        if (ate && score >= nextUpgradeAt) {
+          nextUpgradeAt += 50;
+          checkAchievements();
+          chooseUpgrade();
+          return;
+        }
+        checkAchievements();
         loopId = setTimeout(tick, speed);
       }
 
-      function gameOver() {
+      function gameOver(cause) {
+        if (gameOverCalled) return;
+        gameOverCalled = true;
         if (loopId) clearTimeout(loopId);
         loopId = null;
+        setBest(score);
+        addCoins(runCoins);
+        checkAchievements({ gameOver: true });
+        updateChips();
         finalScoreEl.textContent = score;
-        try {
-          if (window.KriiskoLeaderboard && window.KriiskoLeaderboard.qualifies('snake', score)) {
-            window.KriiskoLeaderboard.promptInitials('snake', score, function(initials) {
-              try {
-                if (initials && window.KriiskoLeaderboard) window.KriiskoLeaderboard.submit('snake', score, initials);
-                if (window.KriiskoLeaderboard) window.KriiskoLeaderboard.show('snake');
-              } catch (_) {}
-              gameoverOverlay.style.display = 'flex';
-            });
-            return;
-          }
-        } catch (_) {}
-        gameoverOverlay.style.display = 'flex';
+        coinsEarnedEl.textContent = '+' + runCoins + ' coins (total ' + getCoins() + ')';
+        KM.gameOver(score, {
+          cause: cause || 'collision',
+          onRetry: () => { start(); }
+        });
       }
 
       function start() {
         if (loopId) clearTimeout(loopId);
         loopId = null;
+        gameOverCalled = false;
+        const cfg = DIFFICULTIES[selectedMode];
         snake = [{ x: 2, y: ROWS >> 1 }, { x: 1, y: ROWS >> 1 }, { x: 0, y: ROWS >> 1 }];
         dir = { x: 1, y: 0 };
         nextDir = { x: 1, y: 0 };
         score = 0;
-        speed = 120;
+        speed = cfg.speed;
         scoreEl.textContent = '0';
+        obstacles = [];
+        upgrades = [];
+        upgradesChosen = 0;
+        nextUpgradeAt = 50;
+        foodValue = 1;
+        pointMult = 1.0;
+        magnetRange = 0;
+        invincTicks = 0;
+        runCoins = 0;
         placeFood();
         startOverlay.style.display = 'none';
         gameoverOverlay.style.display = 'none';
+        upgradeOverlay.style.display = 'none';
         draw();
         started = true;
         startTime = Date.now();
         tickCount = 0;
+        paused = false;
+        updateChips();
+        KM.init({
+          slug: SLUG,
+          title: 'Snake',
+          tagline: 'Use arrow keys or WASD to move',
+          controls: 'arrow keys or WASD',
+          world: 'arcade',
+          difficulty: selectedMode
+        });
         loopId = setTimeout(tick, speed);
       }
 
+      // Difficulty selection
+      Array.from(diffRow.querySelectorAll('.diff-btn')).forEach(btn => {
+        btn.addEventListener('click', () => {
+          selectedMode = btn.getAttribute('data-diff');
+          lset('difficulty', selectedMode);
+          Array.from(diffRow.querySelectorAll('.diff-btn')).forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          updateChips();
+        });
+      });
+      // sync initial active state
+      Array.from(diffRow.querySelectorAll('.diff-btn')).forEach(b => {
+        if (b.getAttribute('data-diff') === selectedMode) b.classList.add('active');
+        else b.classList.remove('active');
+      });
+
       document.addEventListener('keydown', function (e) {
         if (!started || gameoverOverlay.style.display === 'flex') return;
-        if (Date.now() - startTime < 250) return; // ignore keys right after start
+        if (paused) return;
+        if (Date.now() - startTime < 250) return;
         const k = e.key.toLowerCase();
-        if (k === 'arrowup' || k === 'w') { if (dir.y === 0) nextDir = { x: 0, y: -1 }; e.preventDefault(); }
-        if (k === 'arrowdown' || k === 's') { if (dir.y === 0) nextDir = { x: 0, y: 1 }; e.preventDefault(); }
-        if (k === 'arrowleft' || k === 'a') { if (dir.x === 0) nextDir = { x: -1, y: 0 }; e.preventDefault(); }
-        if (k === 'arrowright' || k === 'd') { if (dir.x === 0) nextDir = { x: 1, y: 0 }; e.preventDefault(); }
+        if (k === 'arrowup'    || k === 'w') { if (dir.y === 0) nextDir = { x: 0, y: -1 }; e.preventDefault(); }
+        if (k === 'arrowdown'  || k === 's') { if (dir.y === 0) nextDir = { x: 0, y: 1 };  e.preventDefault(); }
+        if (k === 'arrowleft'  || k === 'a') { if (dir.x === 0) nextDir = { x: -1, y: 0 }; e.preventDefault(); }
+        if (k === 'arrowright' || k === 'd') { if (dir.x === 0) nextDir = { x: 1, y: 0 };  e.preventDefault(); }
       });
 
       startBtn.addEventListener('click', start);
@@ -270,16 +577,15 @@
       restartBtn.addEventListener('touchend', function(e) { e.preventDefault(); start(); });
       window.addEventListener('resize', fitToViewport);
 
-      // Draw initial state so canvas is not blank before "Start" is clicked
       snake = [{ x: 2, y: ROWS >> 1 }, { x: 1, y: ROWS >> 1 }, { x: 0, y: ROWS >> 1 }];
       placeFood();
       fitToViewport();
       draw();
+      updateChips();
 
-      // Debug API — exposed for automated testing (GameTestKit)
       window.__SNAKE__ = {
         getScore:       () => score,
-        getState:       () => !started ? 'idle' : loopId ? 'playing' : 'gameover',
+        getState:       () => !started ? 'idle' : loopId ? (paused ? 'upgrade' : 'playing') : 'gameover',
         getSnakeLength: () => snake.length,
         getHead:        () => snake.length ? { ...snake[snake.length - 1] } : null,
         getDir:         () => ({ ...dir }),
@@ -287,12 +593,14 @@
         getFood:        () => ({ ...food }),
         getGrid:        () => ({ cols: COLS, rows: ROWS }),
         getSnake:       () => snake.map(s => ({ ...s })),
+        getUpgrades:    () => upgrades.slice(),
+        getDifficulty:  () => selectedMode,
+        getCoins:       () => getCoins(),
+        getAchievements:() => getUnlocked(),
+        getObstacles:   () => obstacles.map(o => ({ x: o.x, y: o.y, type: o.type }))
       };
     })();
   </script>
-  <script src="../shared/leaderboard.js"></script>
-  <script src="../shared/mobile-controls.js"></script>
-  <script src="../shared/feedback.js"></script>
   <script>
     document.getElementById('scores-btn').addEventListener('click', function() {
       try {

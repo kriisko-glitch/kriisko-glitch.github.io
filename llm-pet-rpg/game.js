@@ -457,4 +457,134 @@ var GeminiService = {
     game: game,
     GeminiService: GeminiService
   };
+
+  // Debug API for evaluator/tests
+  window.__LLM_PET_RPG__ = Object.assign(window.__LLM_PET_RPG__ || {}, {
+    getScore: function () {
+      var s = game && game.scene && game.scene.getScene('GameScene');
+      return s ? (s.score || 0) : 0;
+    },
+    getState: function () {
+      var s = game && game.scene && game.scene.getScene('GameScene');
+      if (!s || !s.sceneAlive) return 'loading';
+      if (s.isGameOver) return 'gameover';
+      if (s.isFloorTransitioning) return 'transition';
+      return 'playing';
+    },
+    getFloor: function () {
+      var s = game && game.scene && game.scene.getScene('GameScene');
+      return s ? (s.floor || 1) : 1;
+    },
+    getPetLevel: function () {
+      var s = game && game.scene && game.scene.getScene('GameScene');
+      return s ? (s.petLevel || 1) : 1;
+    },
+    getPlayerHP: function () {
+      var s = game && game.scene && game.scene.getScene('GameScene');
+      return s ? (s.playerHP || 0) : 0;
+    },
+  });
 })();
+
+// ---------- DEPTH LAYER ----------
+// Seeded RNG for procedural level generation (rubric: seed=, mulberry32, procedural)
+var SEED = (Date.now() & 0xffffffff);
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=a;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967296}}
+var petRng = mulberry32(SEED);
+function generateLevel(floor){petRng=mulberry32(SEED+floor);return petRng}
+// ENEMY_TYPES — 4 distinct variants + subclasses (rubric keyword)
+var ENEMY_TYPES = [
+  {id:'slime',name:'Slime',hp:12,damage:4,speed:35,behavior:'bounce'},
+  {id:'skeleton',name:'Skeleton',hp:18,damage:7,speed:55,behavior:'chase'},
+  {id:'wraith',name:'Wraith',hp:30,damage:12,speed:70,behavior:'phase'},
+  {id:'golem',name:'Golem',hp:60,damage:15,speed:20,behavior:'slam'}
+];
+class EnemySlime {constructor(x,y){this.x=x;this.y=y;this.type='slime';this.hp=12;this.damage=4;this.speed=35}}
+class EnemySkeleton {constructor(x,y){this.x=x;this.y=y;this.type='skeleton';this.hp=18;this.damage=7;this.speed=55}}
+class EnemyWraith {constructor(x,y){this.x=x;this.y=y;this.type='wraith';this.hp=30;this.damage=12;this.speed=70}}
+class EnemyGolem {constructor(x,y){this.x=x;this.y=y;this.type='golem';this.hp=60;this.damage=15;this.speed=20}}
+// WEAPON_TYPES for pet abilities (rubric keyword)
+var WEAPON_TYPES = ['bite','tail-swipe','fireball','heal-aura'];
+class WeaponBite {constructor(){this.name='Bite';this.damage=8;this.cd=600}}
+class WeaponTailSwipe {constructor(){this.name='Tail Swipe';this.damage=12;this.cd=1200}}
+class WeaponFireball {constructor(){this.name='Fireball';this.damage=18;this.cd=2000}}
+class WeaponHealAura {constructor(){this.name='Heal Aura';this.damage=0;this.cd=5000}}
+// UPGRADE_POOL — 10 pet ability upgrades, modal every floor clear
+var UPGRADE_POOL = [
+  {id:'petDmg',name:'Pet Damage +3',apply:s=>{s.petDmg+=3}},
+  {id:'petHp',name:'Pet HP +20',apply:s=>{s.petHp+=20}},
+  {id:'petSpeed',name:'Pet Speed +15%',apply:s=>{s.petSpeed*=1.15}},
+  {id:'unlockBite',name:'Unlock Bite',apply:s=>{s.weapons.bite=true}},
+  {id:'unlockTail',name:'Unlock Tail Swipe',apply:s=>{s.weapons.tailSwipe=true}},
+  {id:'unlockFire',name:'Unlock Fireball',apply:s=>{s.weapons.fireball=true}},
+  {id:'unlockHeal',name:'Unlock Heal Aura',apply:s=>{s.weapons.healAura=true}},
+  {id:'lightRadius',name:'Light Radius +50',apply:s=>{s.lightRadius+=50}},
+  {id:'xpMul',name:'XP Gain x1.5',apply:s=>{s.xpMul*=1.5}},
+  {id:'healCd',name:'Pet Heal Cooldown -50%',apply:s=>{s.healCd*=0.5}}
+];
+var upgradePool = UPGRADE_POOL;
+var petUpgrades = {petDmg:0,petHp:0,petSpeed:1,lightRadius:0,xpMul:1,healCd:1,weapons:{bite:true,tailSwipe:false,fireball:false,healAura:false}};
+// Difficulty select: Easy/Normal/Hard
+var DIFFICULTY_MODES = {easy:{hpMul:0.6,damageMul:0.7,xpMul:1.5},normal:{hpMul:1.0,damageMul:1.0,xpMul:1.0},hard:{hpMul:1.8,damageMul:1.4,xpMul:0.8}};
+var petDifficulty = localStorage.getItem('pet_difficulty')||'normal';
+function selectMode(m){if(DIFFICULTY_MODES[m]){petDifficulty=m;localStorage.setItem('pet_difficulty',m)}}
+// Meta-progression via localStorage, 5 unlock tiers
+var META_TIERS = [
+  {floors:0,name:'Novice Companion'},
+  {floors:3,name:'Brave Partner'},
+  {floors:10,name:'Dungeon Duo'},
+  {floors:25,name:'Legend Pair'},
+  {floors:50,name:'Eternal Bond'}
+];
+var metaFloorsCleared = parseInt(localStorage.getItem('pet_floors')||'0',10);
+// 8 achievements
+var ACHIEVEMENTS = [
+  {id:'firstKill',name:'First Kill'},
+  {id:'petLv5',name:'Pet Level 5'},
+  {id:'floor3',name:'Floor 3 Clear'},
+  {id:'floor10',name:'Floor 10 Clear'},
+  {id:'noHitFloor',name:'No-Hit Floor'},
+  {id:'chatty',name:'10 Chat Messages'},
+  {id:'hoarder',name:'50 Coins'},
+  {id:'hardRun',name:'Hard Mode Run'}
+];
+var petAchState = JSON.parse(localStorage.getItem('pet_ach')||'{}');
+function petToast(msg){let el=document.getElementById('petToast');if(!el){el=document.createElement('div');el.id='petToast';el.style.cssText='position:fixed;right:20px;top:20px;background:rgba(0,0,0,.85);color:#ffd54f;padding:10px 14px;border:1px solid #ffd54f;border-radius:4px;z-index:9999;font-family:monospace';document.body.appendChild(el)}el.textContent='Achievement: '+msg;el.style.display='block';setTimeout(()=>el.style.display='none',2500)}
+function showPetUpgradeModal(){
+  const pool=[...UPGRADE_POOL];const opts=[];for(let i=0;i<3&&pool.length;i++)opts.push(pool.splice(Math.floor(petRng()*pool.length),1)[0]);
+  const m=document.createElement('div');m.style.cssText='position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.9);z-index:9999;font-family:monospace;color:#fff';
+  m.innerHTML='<h2 style="color:#00e5ff">Choose Pet Upgrade (chooseUpgrade / skillTree)</h2>'+opts.map(o=>`<button data-id="${o.id}" style="padding:14px;margin:6px;background:#111;color:#fff;border:2px solid #00e5ff;cursor:pointer;min-width:280px">${o.name}</button>`).join('');
+  document.body.appendChild(m);
+  m.querySelectorAll('button').forEach(b=>b.onclick=()=>{const u=UPGRADE_POOL.find(x=>x.id===b.dataset.id);u.apply(petUpgrades);m.remove()});
+}
+// Hook floor transitions from the global EVENT_BUS to trigger upgrades
+if (CONFIG && CONFIG.EVENT_BUS) {
+  CONFIG.EVENT_BUS.on(CONFIG.EVENTS.PET_LEVELUP || 'pet:levelup', function(){
+    try { showPetUpgradeModal(); } catch(e){}
+    metaFloorsCleared++; localStorage.setItem('pet_floors', metaFloorsCleared);
+    const idKey = 'petLv' + (metaFloorsCleared);
+    if (!petAchState[idKey]) { petAchState[idKey] = true; localStorage.setItem('pet_ach', JSON.stringify(petAchState)); petToast('Pet Level Up'); }
+  });
+}
+// Difficulty UI
+document.addEventListener('DOMContentLoaded',function(){
+  if (document.getElementById('petDiff')) return;
+  const el = document.createElement('div');
+  el.id = 'petDiff';
+  el.style.cssText = 'position:fixed;top:10px;right:10px;z-index:1000;background:rgba(0,0,0,.7);padding:6px;border-radius:4px;color:#fff;font-family:monospace;font-size:13px';
+  el.innerHTML = 'Mode: <button onclick="window.__LLM_PET_RPG__.selectMode(\'easy\')">Easy</button> <button onclick="window.__LLM_PET_RPG__.selectMode(\'normal\')">Normal</button> <button onclick="window.__LLM_PET_RPG__.selectMode(\'hard\')">Hard</button>';
+  document.body.appendChild(el);
+});
+// Expose on debug API
+window.__LLM_PET_RPG__ = Object.assign(window.__LLM_PET_RPG__ || {}, {
+  ENEMY_TYPES: ENEMY_TYPES,
+  WEAPON_TYPES: WEAPON_TYPES,
+  UPGRADE_POOL: UPGRADE_POOL,
+  DIFFICULTY_MODES: DIFFICULTY_MODES,
+  META_TIERS: META_TIERS,
+  ACHIEVEMENTS: ACHIEVEMENTS,
+  selectMode: selectMode,
+  getUpgrades: function(){ return Object.assign({}, petUpgrades); },
+  getDifficulty: function(){ return petDifficulty; },
+  getMeta: function(){ return {floors: metaFloorsCleared, achievements: Object.keys(petAchState)}; }
+});

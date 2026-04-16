@@ -400,6 +400,9 @@
     if (this.isGameOver) {
       return;
     }
+    if (window.KM && window.KM.isPaused()) {
+      return;
+    }
 
     if (!this.isLevelingUp) {
       this.elapsedMs += delta;
@@ -711,6 +714,7 @@
     if (this.isGameOver || this.isLevelingUp) return;
     var nearest = this.findNearestEnemy(this.player.x, this.player.y);
     if (!nearest) return;
+    if (window.KJ) window.KJ.shoot();
     var baseAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, nearest.x, nearest.y);
     var projectileTotal = this.projectileCount;
     var spread = Phaser.Math.DegToRad(this.cfg.WEAPONS.PROJECTILE_SPREAD_DEG);
@@ -1019,6 +1023,12 @@
     }
 
     var gain = gem.getData("xp") || 1;
+    if (window.KJ) {
+      var gsx = gem.x - this.cameras.main.scrollX;
+      var gsy = gem.y - this.cameras.main.scrollY;
+      window.KJ.particles(gsx, gsy, 10, '#ffc107');
+      window.KJ.pickup();
+    }
     this.collectXP(gain, gem.x, gem.y);
     this.recycleGem(gem);
   };
@@ -1077,6 +1087,11 @@
         target.clearTint();
       }
     }, [enemy], this);
+    if (window.KJ) {
+      window.KJ.shake(4, 100);
+      window.KJ.flash('#ff6b6b', 40);
+      window.KJ.hit();
+    }
 
     if (hp <= 0) {
       this.killEnemy(enemy);
@@ -1104,6 +1119,14 @@
 
     this.killCount += 1;
     this.score += score;
+    if (window.KJ) {
+      var sx = x - this.cameras.main.scrollX;
+      var sy = y - this.cameras.main.scrollY;
+      window.KJ.shake(6, 140);
+      window.KJ.particles(sx, sy, 12, '#ff6b6b');
+      window.KJ.hit();
+    }
+    if (window.KM) window.KM.trackScore(this.score);
 
     this.recycleEnemy(enemy);
 
@@ -1168,6 +1191,11 @@
 
     this.cameras.main.shake(this.cfg.VFX.DAMAGE_SHAKE_MS, this.cfg.VFX.DAMAGE_SHAKE_INTENSITY);
     this.cameras.main.flash(this.cfg.VFX.DAMAGE_FLASH_MS, 255, 70, 90, false);
+    if (window.KJ) {
+      window.KJ.shake(10, 220);
+      window.KJ.flash('#ff0040', 100);
+      window.KJ.hit();
+    }
 
     if (this.flashTween) {
       this.flashTween.stop();
@@ -1211,6 +1239,11 @@
 
     this.cameras.main.flash(130, 255, 40, 40, false);
     this.playGameOverSound();
+    if (window.KJ) {
+      window.KJ.shake(12, 300);
+      window.KJ.flash('#ff0040', 160);
+      window.KJ.gameOver();
+    }
 
     var deathZoomMs = (this.cfg.VFX && this.cfg.VFX.DEATH_ZOOM_DURATION_MS) || 800;
     var deathTransitionMs = (this.cfg.VFX && this.cfg.VFX.DEATH_TRANSITION_MS) || 1200;
@@ -1226,6 +1259,13 @@
     };
 
     try { this.bus.emit(this.cfg.EVENTS.GAME_OVER, stats); } catch (_) {}
+    if (window.KM) {
+      var self = this;
+      window.KM.gameOver(this.score, {
+        cause: 'Overwhelmed by horde',
+        onRetry: function () { self.scene.start('GameScene'); },
+      });
+    }
 
     var scene = this;
     this.time.delayedCall(deathTransitionMs + 20, function () {
@@ -1247,6 +1287,10 @@
 
     this.shieldEmitter.explode(16, this.player.x, this.player.y);
     this.playLevelUpSound();
+    if (window.KJ) {
+      window.KJ.levelUp();
+      window.KJ.flash('#4caf50', 120);
+    }
     try {
       this.showLevelUpOverlay();
     } catch (e) {

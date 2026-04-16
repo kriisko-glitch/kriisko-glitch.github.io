@@ -48,6 +48,19 @@
   <div id="game-root"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.87.0/dist/phaser.min.js"></script>
+  <script src="../shared/kriisko-juice.js"></script>
+  <script src="../shared/kriisko-meta.js"></script>
+  <script>
+    if (window.KM) {
+      window.KM.init({
+        slug: 'survivors-arena',
+        title: 'Survivors Arena',
+        tagline: 'Auto-attack survivor roguelike — pick upgrades, escalate forever',
+        controls: 'WASD / Arrows to move. Weapons auto-fire. P to pause.',
+        world: 'You vs an endless horde. Gems level you up. Upgrades stack.'
+      });
+    }
+  </script>
   <script src="../shared/leaderboard.js"></script>
   <script src="scenes/BootScene.js"></script>
   <script src="scenes/GameScene.js"></script>
@@ -55,5 +68,25 @@
   <script src="scenes/GameOverScene.js"></script>
   <script src="game.js"></script>
   <script src="../shared/mobile-controls.js"></script>
+  <div id="km-difficulty" style="position:fixed;top:50px;right:14px;z-index:40;display:flex;gap:4px;font-size:11px;font-family:monospace;">
+    <button class="km-diff" data-diff="easy" style="padding:2px 8px;cursor:pointer;">Easy</button>
+    <button class="km-diff km-active" data-diff="normal" style="padding:2px 8px;cursor:pointer;background:#0ff;color:#000;">Normal</button>
+    <button class="km-diff" data-diff="hard" style="padding:2px 8px;cursor:pointer;">Hard</button>
+  </div>
+  <script>
+    (function(){
+      try { var saved = localStorage.getItem('kriisko:difficulty') || 'normal';
+        document.querySelectorAll('.km-diff').forEach(function(b){ b.classList.toggle('km-active', b.dataset.diff === saved); });
+      } catch(_){}
+      document.querySelectorAll('.km-diff').forEach(function(b){
+        b.addEventListener('click', function(e){
+          document.querySelectorAll('.km-diff').forEach(function(x){ x.classList.remove('km-active'); x.style.background=''; x.style.color=''; });
+          e.target.classList.add('km-active');
+          e.target.style.background='#0ff'; e.target.style.color='#000';
+          try { localStorage.setItem('kriisko:difficulty', e.target.dataset.diff); } catch(_){}
+        });
+      });
+    })();
+  </script>
 </body>
 </html>

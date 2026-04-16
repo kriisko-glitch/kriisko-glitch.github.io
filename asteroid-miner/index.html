@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Asteroid Miner</title>
+<style>
+html,body{margin:0;padding:0;background:#000;overflow:hidden;font-family:'Orbitron',monospace}
+canvas{display:block;background:#000}
+#difficulty-select,#perk-tree,#upgrade-modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);display:none;z-index:100;color:#0ff;text-align:center;padding-top:100px;font-family:Orbitron,monospace}
+#difficulty-select.show,#perk-tree.show,#upgrade-modal.show{display:block}
+.btn-diff,.btn-perk,.btn-upg{background:#022;border:2px solid #0ff;color:#0ff;padding:16px 32px;margin:12px;font-size:18px;cursor:pointer;font-family:inherit}
+.btn-diff:hover,.btn-perk:hover,.btn-upg:hover{background:#055}
+.btn-perk.owned{border-color:#ff0;color:#ff0}
+.btn-perk.locked{opacity:0.4}
+#toast{position:fixed;top:60px;right:20px;background:#022;border:2px solid #ff0;color:#ff0;padding:12px 20px;font-family:Orbitron;z-index:200;display:none;max-width:280px}
+#toast.show{display:block;animation:slideIn 0.3s}
+@keyframes slideIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron&display=swap" rel="stylesheet">
+</head>
+<body>
+<canvas id="c" aria-label="Game canvas"></canvas>
+<div id="difficulty-select">
+  <h1 style="font-size:48px">ASTEROID MINER</h1>
+  <p>Select Difficulty</p>
+  <button class="btn-diff" data-diff="easy">EASY</button>
+  <button class="btn-diff" data-diff="normal">NORMAL</button>
+  <button class="btn-diff" data-diff="hard">HARD</button>
+  <br><br>
+  <button class="btn-perk" id="open-perks">PERK TREE</button>
+  <p id="coins-display" style="margin-top:20px">Coins: 0</p>
+</div>
+<div id="perk-tree">
+  <h1>PERK TREE</h1>
+  <p id="perk-coins">Coins: 0</p>
+  <div id="perk-list"></div>
+  <button class="btn-perk" id="close-perks">BACK</button>
+</div>
+<div id="upgrade-modal">
+  <h1>CHOOSE UPGRADE</h1>
+  <div id="upgrade-choices"></div>
+</div>
+<div id="toast"></div>
+<script src="../shared/kriisko-juice.js"></script>
+<script src="../shared/kriisko-meta.js"></script>
+<script>
+const c=document.getElementById('c');
+const ctx=c.getContext('2d');
+function resize(){c.width=window.innerWidth;c.height=window.innerHeight;}
+resize();window.addEventListener('resize',resize);
+const keys={},mouse={x:0,y:0,down:false};
+window.addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);
+window.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+window.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY});
+window.addEventListener('mousedown',()=>mouse.down=true);
+window.addEventListener('mouseup',()=>mouse.down=false);
+
+const STATE={MENU:0,PLAYING:1,GAMEOVER:2,UPGRADE:3};
+let state=STATE.MENU;
+let score=0,wave=1,highScore=localStorage.getItem('am_hs')||0;
+let player,asteroids,enemies,particles,bullets,ebullets,collectibles,waveTimer=0;
+let difficulty='normal',diffMult={easy:{hp:0.7,spawn:0.7,score:0.8},normal:{hp:1,spawn:1,score:1},hard:{hp:1.5,spawn:1.5,score:1.4}};
+let weaponIndex=0,nextUpgradeScore=1000,upgrades=[];
+let coins=parseInt(localStorage.getItem('am_coins')||'0');
+let perks=JSON.parse(localStorage.getItem('am_perks')||'{}');
+let achievements=JSON.parse(localStorage.getItem('am_achievements')||'{}');
+
+function rand(min,max){return Math.random()*(max-min)+min;}
+function wrap(o){if(o.x<0)o.x=c.width;if(o.x>c.width)o.x=0;if(o.y<0)o.y=c.height;if(o.y>c.height)o.y=0;}
+function dist(a,b){const dx=a.x-b.x,dy=a.y-b.y;return Math.hypot(dx,dy);}
+function angle(a,b){return Math.atan2(b.y-a.y,b.x-a.x);}
+
+// WEAPON_TYPES — 3 weapons cycled with Q/E
+const WEAPON_TYPES=[
+  {name:'Machine Gun',cooldown:0.1,shots:1,spread:0,speed:800,damage:1,color:'#0ff'},
+  {name:'Spread Shot',cooldown:0.2,shots:5,spread:0.35,speed:700,damage:1,color:'#f0f'},
+  {name:'Missile',cooldown:0.5,shots:1,spread:0,speed:500,damage:3,color:'#ff0',homing:true}
+];
+
+// UPGRADE_POOL — 7 upgrades, 3-choice modal every 1000 points
+const UPGRADE_POOL=[
+  {id:'firerate',name:'Rapid Fire',desc:'+30% fire rate',apply:()=>{player.fireRateMult*=1.3;}},
+  {id:'damage',name:'Heavy Rounds',desc:'+1 damage',apply:()=>{player.damageBonus++;}},
+  {id:'shield',name:'Shield Boost',desc:'+1 max shield',apply:()=>{player.maxShields++;player.shields++;}},
+  {id:'spread',name:'Twin Shot',desc:'+1 bullet per shot',apply:()=>{player.extraShots++;}},
+  {id:'speed',name:'Thrust Tune',desc:'+25% thrust',apply:()=>{player.thrustMult*=1.25;}},
+  {id:'magnet',name:'Magnet',desc:'Collectibles pulled',apply:()=>{player.magnet=true;}},
+  {id:'regen',name:'Auto-Repair',desc:'Slow shield regen',apply:()=>{player.regen=true;}}
+];
+
+// PERK_POOL — 5 meta perks (localStorage)
+const PERK_POOL=[
+  {id:'start_shield',name:'Reinforced Hull',cost:100,desc:'+1 starting shield'},
+  {id:'start_weapon',name:'Weapon Cache',cost:150,desc:'Start with spread shot'},
+  {id:'coin_boost',name:'Coin Magnet',cost:200,desc:'+50% coin drops'},
+  {id:'start_fire',name:'Pre-Tuned Barrel',cost:250,desc:'+20% starting fire rate'},
+  {id:'revive',name:'Backup Core',cost:400,desc:'Revive once per run'}
+];
+
+// ENEMY_TYPES — 4 distinct enemy classes
+class Enemy{
+  constructor(x,y){this.x=x;this.y=y;this.vx=0;this.vy=0;this.size=14;this.cooldown=rand(0.5,2);this.hp=1;this.behavior='chase';}
+  update(dt){
+    const a=angle(this,player);
+    this.vx+=Math.cos(a)*100*dt;this.vy+=Math.sin(a)*100*dt;
+    this.vx*=0.95;this.vy*=0.95;
+    this.x+=this.vx*dt;this.y+=this.vy*dt;
+    this.cooldown-=dt;
+    if(this.cooldown<=0){this.cooldown=rand(1,2);
+      const ea=angle(this,player);
+      ebullets.push(new Bullet(this.x,this.y,ea+rand(-0.2,0.2)));}
+    wrap(this);
+  }
+  draw(){
+    ctx.save();ctx.translate(this.x,this.y);ctx.rotate(angle(this,player));
+    ctx.fillStyle='#f00';
+    ctx.beginPath();ctx.moveTo(this.size,0);ctx.lineTo(-this.size,-this.size/2);ctx.lineTo(-this.size/2,0);ctx.lineTo(-this.size,this.size/2);ctx.closePath();ctx.fill();
+    ctx.restore();
+  }
+}
+class EnemyScout extends Enemy{
+  constructor(x,y){super(x,y);this.size=10;this.speed=180;this.hp=1;this.name='Scout';}
+  update(dt){
+    const a=angle(this,player);
+    this.vx+=Math.cos(a)*this.speed*dt;this.vy+=Math.sin(a)*this.speed*dt;
+    this.vx*=0.94;this.vy*=0.94;
+    this.x+=this.vx*dt;this.y+=this.vy*dt;
+    this.cooldown-=dt;
+    if(this.cooldown<=0){this.cooldown=rand(0.8,1.4);
+      ebullets.push(new Bullet(this.x,this.y,angle(this,player)));}
+    wrap(this);
+  }
+  draw(){
+    ctx.save();ctx.translate(this.x,this.y);ctx.rotate(angle(this,player));
+    ctx.fillStyle='#f80';
+    ctx.beginPath();ctx.moveTo(this.size,0);ctx.lineTo(-this.size,-this.size*0.7);ctx.lineTo(-this.size,this.size*0.7);ctx.closePath();ctx.fill();
+    ctx.restore();
+  }
+}
+class EnemyGunner extends Enemy{
+  constructor(x,y){super(x,y);this.size=16;this.hp=2;this.name='Gunner';}
+  update(dt){
+    const a=angle(this,player);
+    const d=dist(this,player);
+    if(d>350){this.vx+=Math.cos(a)*80*dt;this.vy+=Math.sin(a)*80*dt;}
+    else if(d<250){this.vx-=Math.cos(a)*60*dt;this.vy-=Math.sin(a)*60*dt;}
+    this.vx*=0.95;this.vy*=0.95;
+    this.x+=this.vx*dt;this.y+=this.vy*dt;
+    this.cooldown-=dt;
+    if(this.cooldown<=0){this.cooldown=1.2;
+      for(let i=-1;i<=1;i++)ebullets.push(new Bullet(this.x,this.y,angle(this,player)+i*0.2));}
+    wrap(this);
+  }
+  draw(){
+    ctx.save();ctx.translate(this.x,this.y);
+    ctx.fillStyle='#a0f';
+    ctx.beginPath();ctx.arc(0,0,this.size,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#fff';ctx.fillRect(-3,-3,6,6);
+    ctx.restore();
+  }
+}
+class EnemyBrute extends Enemy{
+  constructor(x,y){super(x,y);this.size=22;this.hp=5;this.name='Brute';}
+  update(dt){
+    const a=angle(this,player);
+    this.vx+=Math.cos(a)*60*dt;this.vy+=Math.sin(a)*60*dt;
+    this.vx*=0.97;this.vy*=0.97;
+    this.x+=this.vx*dt;this.y+=this.vy*dt;
+    this.cooldown-=dt;
+    if(this.cooldown<=0){this.cooldown=2.5;
+      for(let i=0;i<8;i++)ebullets.push(new Bullet(this.x,this.y,i/8*Math.PI*2));}
+    wrap(this);
+  }
+  draw(){
+    ctx.save();ctx.translate(this.x,this.y);
+    ctx.fillStyle='#f0f';
+    ctx.beginPath();
+    for(let i=0;i<6;i++){const a=i/6*Math.PI*2;ctx.lineTo(Math.cos(a)*this.size,Math.sin(a)*this.size);}
+    ctx.closePath();ctx.fill();
+    ctx.restore();
+  }
+}
+
+const ENEMY_TYPES=[
+  {cls:EnemyScout,weight:5,minWave:1},
+  {cls:EnemyGunner,weight:3,minWave:2},
+  {cls:EnemyBrute,weight:1,minWave:4}
+];
+
+function spawnEnemy(){
+  const pool=ENEMY_TYPES.filter(t=>t.minWave<=wave);
+  const total=pool.reduce((s,t)=>s+t.weight,0);
+  let r=Math.random()*total;
+  for(const t of pool){r-=t.weight;if(r<=0){
+    const side=Math.floor(rand(0,4));
+    let x,y;
+    if(side<2){x=rand(0,c.width);y=side===0?-30:c.height+30;}
+    else{y=rand(0,c.height);x=side===2?-30:c.width+30;}
+    enemies.push(new t.cls(x,y));return;
+  }}
+}
+
+// ACHIEVEMENTS — 8 total
+const ACHIEVEMENTS=[
+  {id:'first_kill',name:'First Blood',cond:()=>score>=50},
+  {id:'wave5',name:'Wave 5 Survivor',cond:()=>wave>=5},
+  {id:'wave10',name:'Veteran',cond:()=>wave>=10},
+  {id:'score1k',name:'Kilopoints',cond:()=>score>=1000},
+  {id:'score5k',name:'Asteroid Lord',cond:()=>score>=5000},
+  {id:'no_damage_wave',name:'Untouchable',cond:()=>player&&player.fullShieldWaves>=1},
+  {id:'all_weapons',name:'Arsenal',cond:()=>player&&player.weaponsUsed&&player.weaponsUsed.size>=3},
+  {id:'upgrades5',name:'Powered Up',cond:()=>upgrades.length>=5}
+];
+
+function checkAchievements(){
+  ACHIEVEMENTS.forEach(a=>{
+    if(!achievements[a.id]&&a.cond()){
+      achievements[a.id]=true;
+      localStorage.setItem('am_achievements',JSON.stringify(achievements));
+      showToast('Achievement: '+a.name);
+    }
+  });
+}
+
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+class Particle{
+ constructor(x,y,vx,vy,color,size,life){this.x=x;this.y=y;this.vx=vx;this.vy=vy;this.color=color;this.size=size;this.life=life;this.maxLife=life;}
+ update(dt){this.x+=this.vx*dt;this.y+=this.vy*dt;this.life-=dt;this.size*=0.98;}
+ draw(){ctx.globalAlpha=Math.max(0,this.life/this.maxLife);ctx.fillStyle=this.color;ctx.beginPath();ctx.arc(this.x,this.y,this.size,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
+}
+
+class Player{
+ constructor(){
+  this.x=c.width/2;this.y=c.height/2;this.vx=0;this.vy=0;this.angle=0;this.size=12;
+  this.maxShields=3+(perks.start_shield?1:0);this.shields=this.maxShields;
+  this.cooldown=0;this.weaponIdx=perks.start_weapon?1:0;
+  this.fireRateMult=1+(perks.start_fire?0:0);
+  if(perks.start_fire)this.fireRateMult=1.2;
+  this.damageBonus=0;this.extraShots=0;this.thrustMult=1;
+  this.magnet=false;this.regen=false;this.regenTimer=0;
+  this.revived=!perks.revive;this.fullShieldWaves=0;
+  this.weaponsUsed=new Set();
+ }
+ update(dt){
+  this.cooldown=Math.max(0,this.cooldown-dt);
+  if(keys['w']){this.vx+=Math.cos(this.angle)*300*this.thrustMult*dt;this.vy+=Math.sin(this.angle)*300*this.thrustMult*dt;}
+  if(keys['s']){this.vx-=Math.cos(this.angle)*150*dt;this.vy-=Math.sin(this.angle)*150*dt;}
+  if(keys['a'])this.angle-=3*dt;
+  if(keys['d'])this.angle+=3*dt;
+  if(keys['q']&&!this._qLock){weaponIndex=(weaponIndex-1+WEAPON_TYPES.length)%WEAPON_TYPES.length;this._qLock=true;this.weaponsUsed.add(weaponIndex);}
+  if(!keys['q'])this._qLock=false;
+  if(keys['e']&&!this._eLock){weaponIndex=(weaponIndex+1)%WEAPON_TYPES.length;this._eLock=true;this.weaponsUsed.add(weaponIndex);}
+  if(!keys['e'])this._eLock=false;
+  this.vx*=0.97;this.vy*=0.97;
+  this.x+=this.vx*dt;this.y+=this.vy*dt;
+  wrap(this);
+  if(this.regen){this.regenTimer+=dt;if(this.regenTimer>8&&this.shields<this.maxShields){this.shields++;this.regenTimer=0;}}
+  if(mouse.down&&this.cooldown<=0){
+    const w=WEAPON_TYPES[weaponIndex];
+    this.cooldown=w.cooldown/this.fireRateMult;
+    const a=angle(this,mouse);
+    const shotCount=w.shots+this.extraShots;
+    for(let i=0;i<shotCount;i++){
+      const off=shotCount>1?(i-(shotCount-1)/2)*(w.spread||0.1):0;
+      bullets.push(new Bullet(this.x,this.y,a+off,w.speed,w.damage+this.damageBonus,w.color,w.homing));
+    }
+    KJ.shoot();
+  }
+ }
+ draw(){
+  ctx.save();ctx.translate(this.x,this.y);ctx.rotate(this.angle);
+  ctx.fillStyle=WEAPON_TYPES[weaponIndex].color;
+  ctx.beginPath();ctx.moveTo(this.size,0);ctx.lineTo(-this.size,-this.size/2);ctx.lineTo(-this.size/2,0);ctx.lineTo(-this.size,this.size/2);ctx.closePath();ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle=['#0f0','#ff0','#f00','#f00','#f00'][Math.max(0,3-this.shields)];
+  ctx.lineWidth=4;ctx.beginPath();ctx.arc(this.x,this.y,this.size+6,0,Math.PI*2);ctx.stroke();
+ }
+ hit(){
+  this.shields--;
+  for(let i=0;i<20;i++){const a=rand(0,Math.PI*2);
+    particles.push(new Particle(this.x,this.y,Math.cos(a)*rand(100,300),Math.sin(a)*rand(100,300),'#0ff',rand(3,6),0.5));}
+  if(this.shields<=0){
+    if(!this.revived){this.revived=true;this.shields=this.maxShields;showToast('REVIVED!');}
+    else state=STATE.GAMEOVER;
+  }
+  KJ.hit();
+ }
+}
+
+class Bullet{
+ constructor(x,y,a,speed,damage,color,homing){
+   this.x=x;this.y=y;this.vx=Math.cos(a)*(speed||800);this.vy=Math.sin(a)*(speed||800);
+   this.life=1.5;this.size=4;this.damage=damage||1;this.color=color||'#0ff';this.homing=homing||false;
+ }
+ update(dt){
+   if(this.homing&&enemies.length){
+     let nearest=enemies[0],nd=dist(this,enemies[0]);
+     for(const e of enemies){const d=dist(this,e);if(d<nd){nd=d;nearest=e;}}
+     const ta=angle(this,nearest);
+     const cs=Math.hypot(this.vx,this.vy);
+     this.vx=this.vx*0.9+Math.cos(ta)*cs*0.1;
+     this.vy=this.vy*0.9+Math.sin(ta)*cs*0.1;
+   }
+   this.x+=this.vx*dt;this.y+=this.vy*dt;this.life-=dt;
+ }
+ draw(){ctx.fillStyle=this.color;ctx.beginPath();ctx.arc(this.x,this.y,this.size,0,Math.PI*2);ctx.fill();}
+}
+
+class Asteroid{
+ constructor(x,y,size){this.x=x;this.y=y;this.size=size;this.vx=rand(-50,50);this.vy=rand(-50,50);this.angle=rand(0,Math.PI*2);this.rotSpeed=rand(-1,1);this.hp=1;}
+ update(dt){this.x+=this.vx*dt;this.y+=this.vy*dt;this.angle+=this.rotSpeed*dt;wrap(this);}
+ draw(){ctx.save();ctx.translate(this.x,this.y);ctx.rotate(this.angle);
+  ctx.strokeStyle='#fc0';ctx.lineWidth=2;ctx.beginPath();
+  const r=this.size;
+  for(let i=0;i<8;i++){const a=i/8*Math.PI*2;const rr=r+rand(-r*0.2,r*0.2);const x=Math.cos(a)*rr,y=Math.sin(a)*rr;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}
+  ctx.closePath();ctx.stroke();ctx.restore();}
+ hit(){
+  if(this.size>15){const n=Math.floor(rand(2,4));
+    for(let i=0;i<n;i++)asteroids.push(new Asteroid(this.x+rand(-20,20),this.y+rand(-20,20),this.size/2));}
+  else{collectibles.push({x:this.x,y:this.y,size:8,value:10});}
+  for(let i=0;i<25;i++){const a=rand(0,Math.PI*2);
+    particles.push(new Particle(this.x,this.y,Math.cos(a)*rand(50,200),Math.sin(a)*rand(50,200),'#fc0',rand(4,10),0.6));}
+  KJ.shake(4, 100);
+ }
+}
+
+function showUpgradeModal(){
+  state=STATE.UPGRADE;
+  const choices=[...UPGRADE_POOL].sort(()=>Math.random()-0.5).slice(0,3);
+  const cont=document.getElementById('upgrade-choices');
+  cont.innerHTML='';
+  choices.forEach(u=>{
+    const b=document.createElement('button');
+    b.className='btn-upg';b.innerHTML='<b>'+u.name+'</b><br>'+u.desc;
+    b.onclick=()=>{u.apply();upgrades.push(u.id);document.getElementById('upgrade-modal').classList.remove('show');state=STATE.PLAYING;checkAchievements();};
+    cont.appendChild(b);
+  });
+  document.getElementById('upgrade-modal').classList.add('show');
+}
+
+function init(){
+ player=new Player();
+ asteroids=[];enemies=[];particles=[];bullets=[];ebullets=[];collectibles=[];
+ waveTimer=0;wave=1;score=0;upgrades=[];nextUpgradeScore=1000;weaponIndex=player.weaponIdx;
+ KM.init({slug:'asteroid-miner',title:'Asteroid Miner',tagline:'Mine asteroids, avoid enemies',controls:'WASD move, Click shoot, Q/E cycle weapons'});
+ for(let i=0;i<4+wave;i++)asteroids.push(new Asteroid(rand(0,c.width),rand(0,c.height),rand(20,40)));
+}
+
+function update(dt){
+ if(state===STATE.PLAYING){
+  if(KM.isPaused())return;
+  const dm=diffMult[difficulty];
+  waveTimer+=dt;
+  if(waveTimer>30){waveTimer=0;wave++;
+    if(player.shields===player.maxShields)player.fullShieldWaves++;
+    for(let i=0;i<2;i++)spawnEnemy();}
+  if(Math.random()<0.01*dm.spawn)asteroids.push(new Asteroid(rand(0,c.width),rand(0,c.height),rand(20,40)));
+  if(Math.random()<0.005*dm.spawn)spawnEnemy();
+
+  player.update(dt);
+  bullets.forEach(b=>b.update(dt));
+  ebullets.forEach(b=>b.update(dt));
+  asteroids.forEach(a=>a.update(dt));
+  enemies.forEach(e=>e.update(dt));
+  particles.forEach(p=>p.update(dt));
+  collectibles.forEach((col,i)=>{
+   if(player.magnet&&dist(player,col)<120){
+     const a=angle(col,player);col.x+=Math.cos(a)*200*dt;col.y+=Math.sin(a)*200*dt;
+   }
+   if(dist(player,col)<player.size+col.size){
+    const gain=Math.floor(col.value*dm.score);
+    score+=gain;
+    const coinGain=Math.floor(gain*(perks.coin_boost?1.5:1)/10);
+    coins+=coinGain;
+    localStorage.setItem('am_coins',coins);
+    KM.trackScore(score);
+    for(let j=0;j<10;j++){const a=rand(0,Math.PI*2);particles.push(new Particle(col.x,col.y,Math.cos(a)*rand(50,150),Math.sin(a)*rand(50,150),'#0f0',rand(2,4),0.4));}
+    collectibles.splice(i,1);KJ.pickup();
+   }
+  });
+
+  if(score>=nextUpgradeScore){nextUpgradeScore+=1000;showUpgradeModal();}
+
+  bullets.forEach((b,bi)=>{
+   asteroids.forEach((a,ai)=>{
+    if(dist(b,a)<a.size){a.hit();score+=Math.floor(a.size*dm.score);asteroids.splice(ai,1);bullets.splice(bi,1);KJ.hit();}
+   });
+   enemies.forEach((e,ei)=>{
+    if(dist(b,e)<e.size){e.hp-=b.damage||1;bullets.splice(bi,1);
+     if(e.hp<=0){score+=Math.floor(50*dm.score);coins+=perks.coin_boost?7:5;localStorage.setItem('am_coins',coins);
+       for(let j=0;j<20;j++){const a=rand(0,Math.PI*2);particles.push(new Particle(e.x,e.y,Math.cos(a)*rand(80,250),Math.sin(a)*rand(80,250),'#f00',rand(3,7),0.5));}
+       enemies.splice(ei,1);KJ.hit();KJ.shake(5,120);
+     }}
+   });
+  });
+
+  ebullets.forEach((b,bi)=>{if(dist(b,player)<player.size){player.hit();ebullets.splice(bi,1);KJ.flash('#fff',70);}});
+
+  bullets=bullets.filter(b=>b.life>0);
+  ebullets=ebullets.filter(b=>b.life>0);
+  particles=particles.filter(p=>p.life>0);
+  asteroids=asteroids.filter(a=>a.size>5);
+  checkAchievements();
+ }
+}
+
+function draw(){
+ ctx.fillStyle='rgba(0,0,0,0.2)';ctx.fillRect(0,0,c.width,c.height);
+ for(let i=0;i<100;i++){const s=Math.sin(Date.now()/10000+i)*0.5+0.5;
+   ctx.fillStyle=`rgba(255,255,255,${s*0.3})`;ctx.fillRect((i*137)%c.width,(i*211)%c.height,1,1);}
+ if(state===STATE.GAMEOVER){
+  KM.gameOver(score,{cause:'Game Over',onRetry:()=>{document.getElementById('difficulty-select').classList.add('show');updateCoinsDisplay();state=STATE.MENU;}});
+ }
+ if(state===STATE.PLAYING||state===STATE.UPGRADE){
+  player.draw();
+  bullets.forEach(b=>b.draw());
+  ebullets.forEach(b=>{ctx.fillStyle='#f66';ctx.beginPath();ctx.arc(b.x,b.y,5,0,Math.PI*2);ctx.fill();});
+  asteroids.forEach(a=>a.draw());
+  enemies.forEach(e=>e.draw());
+  particles.forEach(p=>p.draw());
+  collectibles.forEach(col=>{ctx.fillStyle='#0f0';ctx.beginPath();ctx.arc(col.x,col.y,col.size,0,Math.PI*2);ctx.fill();});
+  ctx.fillStyle='#0ff';ctx.font='20px Orbitron';ctx.textAlign='left';
+  ctx.fillText('Score: '+score,20,30);
+  ctx.fillText('Wave: '+wave,20,60);
+  ctx.fillText('Shields: '+player.shields+'/'+player.maxShields,20,90);
+  ctx.fillText('Weapon: '+WEAPON_TYPES[weaponIndex].name,20,120);
+  ctx.fillText('Diff: '+difficulty.toUpperCase(),20,150);
+  ctx.fillStyle='#ff0';ctx.fillText('Coins: '+coins,20,180);
+  ctx.fillStyle='#0ff';ctx.fillText('Upgrades: '+upgrades.length,20,210);
+ }
+}
+
+function updateCoinsDisplay(){
+  document.getElementById('coins-display').textContent='Coins: '+coins;
+  document.getElementById('perk-coins').textContent='Coins: '+coins;
+}
+
+function buildPerkTree(){
+  const list=document.getElementById('perk-list');
+  list.innerHTML='';
+  PERK_POOL.forEach(p=>{
+    const owned=perks[p.id];
+    const affordable=coins>=p.cost;
+    const b=document.createElement('button');
+    b.className='btn-perk'+(owned?' owned':'')+(!affordable&&!owned?' locked':'');
+    b.innerHTML='<b>'+p.name+'</b> ('+p.cost+' coins)<br>'+p.desc;
+    if(owned)b.innerHTML+='<br>OWNED';
+    b.onclick=()=>{
+      if(!owned&&affordable){coins-=p.cost;perks[p.id]=true;
+        localStorage.setItem('am_coins',coins);localStorage.setItem('am_perks',JSON.stringify(perks));
+        buildPerkTree();updateCoinsDisplay();}
+    };
+    list.appendChild(b);
+  });
+}
+
+document.querySelectorAll('.btn-diff').forEach(b=>{
+  b.onclick=()=>{difficulty=b.dataset.diff;document.getElementById('difficulty-select').classList.remove('show');init();state=STATE.PLAYING;};
+});
+document.getElementById('open-perks').onclick=()=>{buildPerkTree();document.getElementById('difficulty-select').classList.remove('show');document.getElementById('perk-tree').classList.add('show');};
+document.getElementById('close-perks').onclick=()=>{document.getElementById('perk-tree').classList.remove('show');document.getElementById('difficulty-select').classList.add('show');};
+
+let last=0;
+function loop(ts){
+ const dt=Math.min(0.05,(ts-last)/1000);last=ts;
+ update(dt);draw();requestAnimationFrame(loop);
+}
+
+// Show difficulty on load
+document.getElementById('difficulty-select').classList.add('show');
+updateCoinsDisplay();
+requestAnimationFrame(loop);
+
+// Debug API
+window.__ASTEROID_MINER__={
+  getScore:()=>score,
+  getState:()=>['menu','playing','gameover','upgrade'][state],
+  getWave:()=>wave,
+  getCoins:()=>coins,
+  getUpgrades:()=>upgrades.slice()
+};
+</script>
+</body>
+</html>

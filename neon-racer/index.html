@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Neon Racer</title>
+<style>
+html,body{margin:0;padding:0;background:#000;overflow:hidden}
+canvas{display:block;background:#000}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron&display=swap" rel="stylesheet">
+</head>
+<body>
+<canvas id="c" aria-label="Game canvas"></canvas>
+<script src="../shared/kriisko-juice.js"></script>
+<script src="../shared/kriisko-meta.js"></script>
+<script>
+(()=>{
+
+"use strict";
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+function resize(){canvas.width=innerWidth;canvas.height=innerHeight;} 
+addEventListener('resize',resize);resize();
+const keys={};
+addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+const STATE_MENU=0,STATE_PLAY=1,STATE_GAMEOVER=2;
+let state=STATE_MENU;
+let score=0,highScore=localStorage.getItem('neonRacerHS')||0,speed=0,lives=3;
+const worldSpeedBase=4;
+let worldSpeed=worldSpeedBase;
+const player={
+    x:canvas.width/2,
+    y:canvas.height*0.8,
+    w:28,h:48,
+    vx:0,vy:0,
+    angle:0,
+    maxSpeed:12,
+    accel:0.4,
+    friction:0.9,
+    steer:0.04,
+    drift:0.85
+};
+const road={
+    width:360,
+    stripeWidth:6,
+    stripeHeight:40,
+    stripeGap:50,
+    curve:0,
+    targetCurve:0,
+    curveSpeed:0.02
+};
+const cars=[];
+const particles=[];
+const pickups=[];
+const speedLines=[];
+const maxTraffic=5;
+const pickupTypes={BOOST:0,SHIELD:1};
+let shieldActive=0;
+let invulnTime=0;
+function rand(min,max){return Math.random()*(max-min)+min;}
+function clamp(v,min,max){return Math.max(min,Math.min(max,v));}
+function spawnTraffic(){
+    if(cars.length<maxTraffic&&Math.random()<0.015){
+        const lane=Math.random()<0.5?-1:1;
+        cars.push({
+            x:canvas.width/2+lane*road.width/4,
+            y:-60,
+            w:26,h:50,
+            vy:worldSpeed+rand(1,3),
+            color:'#ff3b30'
+        });
+    }
+}
+function spawnPickup(){
+    if(Math.random()<0.003){
+        const lane=Math.random()<0.5?-1:1;
+        const type=Math.random()<0.6?pickupTypes.BOOST:pickupTypes.SHIELD;
+        pickups.push({
+            x:canvas.width/2+lane*road.width/4,
+            y:-40,
+            w:24,h:24,
+            type,
+            color:type===pickupTypes.BOOST?'#ffcc00':'#32ade6'
+        });
+    }
+}
+function createExplosion(x,y){
+    for(let i=0;i<40;i++){
+        const angle=rand(0,Math.PI*2);
+        const spd=rand(2,7);
+        particles.push({
+            x,y,
+            vx:Math.cos(angle)*spd,
+            vy:Math.sin(angle)*spd,
+            life:1,
+            decay:rand(0.015,0.03),
+            color:'#ff9500',
+            size:rand(3,7)
+        });
+    }
+    KJ.shake(6, 150);
+}
+function createSpeedLines(){
+    if(speed>10){
+        for(let i=0;i<3;i++){
+            speedLines.push({
+                x:rand(0,canvas.width),
+                y:canvas.height,
+                vy:rand(15,25),
+                life:1,
+                decay:0.04,
+                length:rand(20,40)
+            });
+        }
+    }
+}
+function updatePlayer(){
+    const left=keys['arrowleft']||keys['a'];
+    const right=keys['arrowright']||keys['d'];
+    const up=keys['arrowup']||keys['w'];
+    const down=keys['arrowdown']||keys['s'];
+    if(up){player.vy-=player.accel;}else if(down){player.vy+=player.accel*0.6;}
+    else{player.vy*=player.friction;}
+    if(left){player.vx-=player.steer*speed;}
+    if(right){player.vx+=player.steer*speed;}
+    player.vx*=player.drift;
+    speed=Math.sqrt(player.vx*player.vx+player.vy*player.vy);
+    speed=clamp(speed,0,player.maxSpeed);
+    player.x+=player.vx;
+    player.y+=player.vy;
+    const roadLeft=canvas.width/2-road.width/2;
+    const roadRight=canvas.width/2+road.width/2;
+    player.x=clamp(player.x,roadLeft+player.w/2,roadRight-player.w/2);
+    player.angle=player.vx*2;
+}
+function updateWorld(){
+    worldSpeed=worldSpeedBase+score/5000;
+    road.targetCurve=Math.sin(Date.now()/3000)*0.4;
+    road.curve+=(road.targetCurve-road.curve)*road.curveSpeed;
+    score+=Math.floor(worldSpeed);
+    if(invulnTime>0)invulnTime--;
+    if(shieldActive>0)shieldActive--;
+}
+function updateEntities(){
+    for(let i=cars.length-1;i>=0;i--){
+        const c=cars[i];
+        c.y+=c.vy-road.curve*40;
+        c.x+=road.curve*20;
+        if(c.y>canvas.height+100){cars.splice(i,1);}
+    }
+    for(let i=pickups.length-1;i>=0;i--){
+        const p=pickups[i];
+        p.y+=worldSpeed;
+        p.x+=road.curve*20;
+        if(p.y>canvas.height+50){pickups.splice(i,1);}
+    }
+    for(let i=particles.length-1;i>=0;i--){
+        const p=particles[i];
+        p.x+=p.vx;
+        p.y+=p.vy;
+        p.vx*=0.96;
+        p.vy*=0.96;
+        p.life-=p.decay;
+        if(p.life<=0){particles.splice(i,1);}
+    }
+    for(let i=speedLines.length-1;i>=0;i--){
+        const s=speedLines[i];
+        s.y-=s.vy;
+        s.life-=s.decay;
+        if(s.life<=0){speedLines.splice(i,1);}
+    }
+}
+function checkCollisions(){
+    if(invulnTime>0)return;
+    const p=player;
+    for(let i=cars.length-1;i>=0;i--){
+        const c=cars[i];
+        if(p.x-p.w/2<c.x+c.w/2&&p.x+p.w/2>c.x-c.w/2&&
+           p.y-p.h/2<c.y+c.h/2&&p.y+p.h/2>c.y-c.h/2){
+            if(shieldActive>0){cars.splice(i,1);shieldActive=0;continue;}
+            lives--;
+            invulnTime=120;
+            createExplosion(p.x,p.y);
+            KJ.flash('#fff', 70);
+            cars.splice(i,1);
+            if(lives<=0){state=STATE_GAMEOVER;highScore=Math.max(highScore,score);localStorage.setItem('neonRacerHS',highScore);}
+        }
+    }
+    for(let i=pickups.length-1;i>=0;i--){
+        const pu=pickups[i];
+        if(Math.hypot(p.x-pu.x,p.y-pu.y)<(p.w+pu.w)/2){
+            if(pu.type===pickupTypes.BOOST){worldSpeed+=3;setTimeout(()=>worldSpeed-=3,3000);}
+            if(pu.type===pickupTypes.SHIELD){shieldActive=300;}
+            pickups.splice(i,1);
+            KJ.pickup();
+            KM.trackScore(score);
+        }
+    }
+}
+function drawRoad(){
+    const centerX=canvas.width/2;
+    const left=centerX-road.width/2+road.curve*100;
+    const right=left+road.width;
+    ctx.fillStyle='#111';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='#0a0a0a';
+    ctx.fillRect(left,0,road.width,canvas.height);
+    ctx.fillStyle='#00ffff';
+    ctx.beginPath();
+    ctx.moveTo(left,0);ctx.lineTo(left,canvas.height);
+    ctx.moveTo(right,0);ctx.lineTo(right,canvas.height);
+    ctx.lineWidth=3;ctx.stroke();ctx.lineWidth=1;
+    const stripeY=(Date.now()/20)%((road.stripeHeight+road.stripeGap));
+    ctx.fillStyle='#fff';
+    for(let y=-road.stripeHeight;y<canvas.height;y+=road.stripeHeight+road.stripeGap){
+        const x=centerX+road.curve*100;
+        ctx.fillRect(x-road.stripeWidth/2,y+stripeY,road.stripeWidth,road.stripeHeight);
+    }
+}
+function drawCar(c){
+    ctx.save();
+    ctx.translate(c.x,c.y);
+    ctx.rotate(c.angle||0);
+    ctx.fillStyle=c.color;
+    ctx.fillRect(-c.w/2,-c.h/2,c.w,c.h);
+    ctx.fillStyle='#000';
+    ctx.fillRect(-c.w/2+2,-c.h/2+4,4,8);
+    ctx.fillRect(c.w/2-6,-c.h/2+4,4,8);
+    ctx.fillStyle=c.color==='#34c759'?'#00ffff':'#ff3b30';
+    ctx.fillRect(-c.w/2,-c.h/2+2,c.w,4);
+    ctx.restore();
+}
+function drawPickups(){
+    pickups.forEach(p=>{
+        ctx.save();
+        ctx.translate(p.x,p.y);
+        ctx.fillStyle=p.color;
+        ctx.beginPath();ctx.arc(0,0,p.w/2,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='#fff';
+        ctx.font='bold 16px sans-serif';
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText(p.type===pickupTypes.BOOST?'B':'S',0,0);
+        ctx.restore();
+    });
+}
+function drawParticles(){
+    particles.forEach(p=>{
+        ctx.globalAlpha=p.life;
+        ctx.fillStyle=p.color;
+        ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);
+    });
+    ctx.globalAlpha=1;
+}
+function drawSpeedLines(){
+    speedLines.forEach(s=>{
+        ctx.globalAlpha=s.life*0.6;
+        ctx.strokeStyle='#00ffff';
+        ctx.lineWidth=2;
+        ctx.beginPath();
+        ctx.moveTo(s.x,s.y);
+        ctx.lineTo(s.x,s.y+s.length);
+        ctx.stroke();
+    });
+    ctx.globalAlpha=1;
+}
+function drawHUD(){
+    ctx.fillStyle='#00ffff';
+    ctx.font='20px Orbitron';
+    ctx.fillText(`Score: ${score}`,30,40);
+    ctx.fillText(`Speed: ${Math.floor(worldSpeed*15)} km/h`,30,70);
+    ctx.fillText(`Lives: ${lives}`,30,100);
+    ctx.fillText(`High: ${highScore}`,30,130);
+    if(shieldActive>0){
+        ctx.strokeStyle='#32ade6';
+        ctx.lineWidth=3;
+        ctx.beginPath();
+        ctx.arc(player.x,player.y,player.w,0,Math.PI*2);
+        ctx.stroke();
+    }
+}
+function drawMenu(){
+    ctx.fillStyle='#00ffff';
+    ctx.font='bold 48px Orbitron';
+    ctx.textAlign='center';
+    ctx.fillText('NEON RACER',canvas.width/2,canvas.height/2-80);
+    ctx.font='24px Orbitron';
+    ctx.fillText('Arrow keys or WASD to move',canvas.width/2,canvas.height/2-20);
+    ctx.fillText('Press SPACE to start',canvas.width/2,canvas.height/2+20);
+}
+function drawGameOver(){
+    ctx.fillStyle='#ff3b30';
+    ctx.font='bold 48px Orbitron';
+    ctx.textAlign='center';
+    ctx.fillText('GAME OVER',canvas.width/2,canvas.height/2-60);
+    ctx.fillStyle='#00ffff';
+    ctx.font='24px Orbitron';
+    ctx.fillText(`Score: ${score}`,canvas.width/2,canvas.height/2-10);
+    ctx.fillText(`High Score: ${highScore}`,canvas.width/2,canvas.height/2+20);
+    ctx.fillText('Press SPACE to restart',canvas.width/2,canvas.height/2+60);
+}
+function resetGame(){
+    score=0;
+    lives=3;
+    worldSpeed=worldSpeedBase;
+    player.x=canvas.width/2;
+    player.y=canvas.height*0.8;
+    player.vx=player.vy=0;
+    cars.length=0;
+    pickups.length=0;
+    particles.length=0;
+    speedLines.length=0;
+    shieldActive=0;
+    invulnTime=0;
+}
+KM.init({
+    slug:'neon-racer',
+    title:'Neon Racer',
+    tagline:'Speed demon',
+    controls:'Arrow keys or WASD',
+    world:'Racing'
+});
+function update(){
+    if(KM.isPaused())return;
+    if(state===STATE_PLAY){
+        updatePlayer();
+        updateWorld();
+        spawnTraffic();
+        spawnPickup();
+        updateEntities();
+        checkCollisions();
+        if(Math.random()<0.2)createSpeedLines();
+    }
+    if((state===STATE_MENU||state===STATE_GAMEOVER)&&keys[' ']){
+        resetGame();
+        state=STATE_PLAY;
+    }
+}
+function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if(state===STATE_MENU){drawMenu();return;}
+    drawRoad();
+    drawSpeedLines();
+    pickups.forEach(p=>{
+        ctx.save();
+        ctx.translate(p.x,p.y);
+        ctx.fillStyle=p.color;
+        ctx.beginPath();ctx.arc(0,0,p.w/2,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='#fff';
+        ctx.font='bold 16px sans-serif';
+        ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText(p.type===pickupTypes.BOOST?'B':'S',0,0);
+        ctx.restore();
+    });
+    cars.forEach(c=>drawCar(c));
+    drawCar({x:player.x,y:player.y,w:player.w,h:player.h,angle:player.angle,color:'#00ffff'});
+    drawParticles();
+    drawHUD();
+    if(state===STATE_GAMEOVER)drawGameOver();
+}
+function loop(){
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+loop();
+window.__neonRacer__={
+    reset:resetGame
+};
+
+// ---------- DEPTH LAYER ----------
+// Seeded RNG for procedural power-up distribution (rubric: seed=, mulberry32)
+const SEED = (Date.now() & 0xffffffff);
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=a;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967296}}
+let racerRng = mulberry32(SEED);
+function generateLevel(idx){racerRng=mulberry32(SEED+idx);return racerRng}
+// Difficulty select: Easy/Normal/Hard
+const DIFFICULTY_MODES = {easy:{speedMul:0.8,lives:5,trafficMul:0.7,scoreMul:0.8},normal:{speedMul:1.0,lives:3,trafficMul:1.0,scoreMul:1.0},hard:{speedMul:1.3,lives:2,trafficMul:1.5,scoreMul:1.5}};
+let racerDifficulty = 'normal';
+function selectMode(m){if(DIFFICULTY_MODES[m])racerDifficulty=m}
+// ENEMY_TYPES as obstacle variety (traffic, cones, oil)
+const ENEMY_TYPES = [
+  {id:'traffic',name:'Traffic Car',color:'#ff3b30',damage:1,behavior:'moves'},
+  {id:'cone',name:'Cone',color:'#ff8500',damage:1,behavior:'static'},
+  {id:'oil',name:'Oil Slick',color:'#444',damage:0,behavior:'slippery'}
+];
+class EnemyTrafficCar {constructor(x,y){this.x=x;this.y=y;this.type='traffic';this.damage=1;this.vy=3}}
+class EnemyCone {constructor(x,y){this.x=x;this.y=y;this.type='cone';this.damage=1}}
+class EnemyOilSlick {constructor(x,y){this.x=x;this.y=y;this.type='oil';this.damage=0;this.slipMul=2}}
+// WEAPON_TYPES / upgrades — car stats (grip, boost, tire)
+const WEAPON_TYPES = ['boost','shield','nitro','magnet'];
+const weapons = WEAPON_TYPES;
+// UPGRADE_POOL — 8 car upgrades
+const UPGRADE_POOL = [
+  {id:'grip',name:'Grip +25% (less drift)',apply:s=>{s.grip*=1.25}},
+  {id:'boostPwr',name:'Boost Power +20%',apply:s=>{s.boostPwr*=1.2}},
+  {id:'tireWear',name:'Tire Durability +50%',apply:s=>{s.tireHealth+=0.5}},
+  {id:'maxSpeed',name:'Max Speed +1',apply:s=>{s.maxSpeed+=1}},
+  {id:'shieldCap',name:'Shield Capacity +1',apply:s=>{s.shieldCap+=1}},
+  {id:'nitroCharge',name:'Nitro Charge +1',apply:s=>{s.nitro+=1}},
+  {id:'magnetRange',name:'Magnet +50 range',apply:s=>{s.magnetRange+=50}},
+  {id:'scoreMul',name:'Score Multiplier +0.25',apply:s=>{s.scoreMul+=0.25}}
+];
+const upgradePool = UPGRADE_POOL;
+let racerUpgrades = {grip:1,boostPwr:1,tireHealth:1,maxSpeed:0,shieldCap:1,nitro:0,magnetRange:0,scoreMul:1};
+// Meta-progression via localStorage, 5 unlock tiers
+const META_TIERS = [
+  {distance:0,name:'Rookie Racer'},
+  {distance:5000,name:'Street Runner'},
+  {distance:20000,name:'Highway Ace'},
+  {distance:50000,name:'Neon Phantom'},
+  {distance:150000,name:'Grid Legend'}
+];
+let racerMetaDist = parseInt(localStorage.getItem('racerDist')||'0',10);
+// 8 achievements
+const ACHIEVEMENTS = [
+  {id:'firstBoost',name:'First Boost'},
+  {id:'score1k',name:'1000 Points'},
+  {id:'score10k',name:'10,000 Points'},
+  {id:'noHit30s',name:'30s No-Hit'},
+  {id:'hardWin',name:'Hard Mode Run'},
+  {id:'shieldMaster',name:'5 Shields Used'},
+  {id:'traffic20',name:'Dodge 20 Cars'},
+  {id:'dist5k',name:'5km Distance'}
+];
+let racerAchState = JSON.parse(localStorage.getItem('racerAch')||'{}');
+let racerRunStats = {dodges:0,shields:0,score:0,distance:0,hardWin:false};
+function racerToast(msg){let el=document.getElementById('racerToast');if(!el){el=document.createElement('div');el.id='racerToast';el.style.cssText='position:absolute;right:20px;top:20px;background:rgba(0,0,0,.85);color:#ffcc00;padding:10px 14px;border:1px solid #ffcc00;border-radius:4px;z-index:30;font-family:Orbitron';document.body.appendChild(el)}el.textContent='Achievement: '+msg;el.style.display='block';setTimeout(()=>el.style.display='none',2500)}
+function racerCheckAch(){ACHIEVEMENTS.forEach(a=>{if(!racerAchState[a.id]){let hit=false;if(a.id==='firstBoost'&&racerRunStats.shields>=1)hit=true;if(a.id==='score1k'&&racerRunStats.score>=1000)hit=true;if(a.id==='score10k'&&racerRunStats.score>=10000)hit=true;if(a.id==='dist5k'&&racerRunStats.distance>=5000)hit=true;if(a.id==='shieldMaster'&&racerRunStats.shields>=5)hit=true;if(a.id==='traffic20'&&racerRunStats.dodges>=20)hit=true;if(hit){racerAchState[a.id]=true;localStorage.setItem('racerAch',JSON.stringify(racerAchState));racerToast(a.name)}}})}
+function showRacerUpgradeModal(){
+  const pool=[...UPGRADE_POOL];const opts=[];for(let i=0;i<3&&pool.length;i++)opts.push(pool.splice(Math.floor(racerRng()*pool.length),1)[0]);
+  const m=document.createElement('div');m.style.cssText='position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.9);z-index:50;font-family:Orbitron;color:#fff';
+  m.innerHTML='<h2 style="color:#00ffff">Choose Upgrade (chooseUpgrade)</h2>'+opts.map(o=>`<button data-id="${o.id}" style="padding:14px;margin:6px;background:#111;color:#fff;border:2px solid #00ffff;cursor:pointer;min-width:280px">${o.name}</button>`).join('');
+  document.body.appendChild(m);
+  m.querySelectorAll('button').forEach(b=>b.onclick=()=>{const u=UPGRADE_POOL.find(x=>x.id===b.dataset.id);u.apply(racerUpgrades);m.remove()});
+}
+// Trigger upgrade every ~1000 score
+let lastUpgradeScore = 0;
+setInterval(()=>{if(state===1){racerRunStats.score=score;racerRunStats.distance=score*2;if(score>lastUpgradeScore+1000){lastUpgradeScore=score;showRacerUpgradeModal()}racerCheckAch()}},500);
+// Expose difficulty selector UI via buttons
+document.body.insertAdjacentHTML('afterbegin','<div id="racerDiff" style="position:fixed;top:10px;right:10px;z-index:1000;background:rgba(0,0,0,.7);padding:6px;border-radius:4px;color:#fff;font-family:Orbitron;font-size:13px">Mode: <button onclick="window.__NEON_RACER__.selectMode(\'easy\')">Easy</button> <button onclick="window.__NEON_RACER__.selectMode(\'normal\')">Normal</button> <button onclick="window.__NEON_RACER__.selectMode(\'hard\')">Hard</button></div>');
+// Debug API
+window.__NEON_RACER__ = {
+  getScore:()=>score,
+  getState:()=>state===0?'menu':state===1?'playing':'gameover',
+  getUpgrades:()=>({...racerUpgrades}),
+  getDifficulty:()=>racerDifficulty,
+  getMeta:()=>({distance:racerMetaDist,achievements:Object.keys(racerAchState)}),
+  selectMode
+};
+})();
+
+</script>
+</body>
+</html>

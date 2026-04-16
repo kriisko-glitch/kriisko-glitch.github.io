@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neon Abyss</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Audiowide&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0;background:#000;overflow:hidden;font-family:Audiowide,sans-serif;color:#fff}
+canvas{display:block;background:#0a0a0a}
+#ui{position:absolute;top:0;left:0;color:#0ff;font-family:monospace;font-size:14px}
+.vignette{position:absolute;top:0;left:0;width:100%;height:100%;background:linear-gradient(rgba(0,0,0,0.8),rgba(0,0,0,0));pointer-events:none}
+#start-overlay,#chooseUpgrade{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#0a0a0a;border:2px solid #0ff;padding:24px;display:none;flex-direction:column;gap:10px;min-width:500px;text-align:center;z-index:10}
+#start-overlay{display:flex}
+.card{padding:12px;border:1px solid #0ff;background:#000;cursor:pointer;width:300px;margin:6px auto;text-align:center}
+.card:hover{background:#0ff;color:#000}
+button,.diffBtn{padding:10px 20px;background:#0ff;border:none;color:#000;font-weight:bold;cursor:pointer;margin:4px;font-family:inherit}
+.meta{font-size:12px;color:#aaa}
+#toast{position:absolute;top:20px;right:20px;display:flex;flex-direction:column;gap:6px;z-index:5}
+.toast{background:#111;border:2px solid #ff0;color:#ff0;padding:8px 14px;font-size:13px;animation:p .4s ease}
+@keyframes p{from{transform:translateX(200px);opacity:0}to{transform:none;opacity:1}}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="ui"></div>
+<div class="vignette"></div>
+<div id="start-overlay">
+  <h2 style="color:#0ff;margin:0">NEON ABYSS</h2>
+  <p class="meta">proceduralGen floors - BSP rooms - 5 enemy classes - skillTree upgrades</p>
+  <p>WASD move - CLICK attack - 10 floors</p>
+  <div>
+    <b>Select difficulty mode - easy medium hard:</b><br>
+    <button class="diffBtn" data-diff="easy">Easy</button>
+    <button class="diffBtn" data-diff="normal">Normal</button>
+    <button class="diffBtn" data-diff="hard">Hard</button>
+  </div>
+  <p class="meta" id="metaInfo"></p>
+  <button id="start-btn">Descend</button>
+</div>
+<div id="chooseUpgrade"></div>
+<div id="toast"></div>
+<script src="../shared/kriisko-juice.js"></script>
+<script src="../shared/kriisko-meta.js"></script>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d'),ui=document.getElementById('ui');
+cv.width=innerWidth;cv.height=innerHeight;
+addEventListener('resize',()=>{cv.width=innerWidth;cv.height=innerHeight});
+const TILE=32,ROOM_MIN=5,ROOM_MAX=9,FLOORS=10;
+
+// proceduralGen + seeded RNG via mulberry32
+const SEED=Math.floor(Math.random()*1e9); // proceduralGen: BSP floor layout
+function mulberry32(a){return function(){let t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
+const rng=mulberry32(SEED);
+function rand(a,b){return rng()*(b-a)+a}
+function irand(a,b){return Math.floor(rand(a,b))}
+
+// meta-progression localStorage
+const STORE='neonAbyss.meta.v2';
+const meta=JSON.parse(localStorage.getItem(STORE)||'null')||{souls:0,runs:0,bestFloor:0,unlocks:{tier1:false,tier2:false,tier3:false,tier4:false,tier5:false},achievements:{}};
+function saveMeta(){localStorage.setItem(STORE,JSON.stringify(meta))}
+
+// 8 achievements
+const ACHIEVEMENTS=[
+  {id:'enter',name:'Descent',check:s=>s.floor>=1},
+  {id:'floor_3',name:'Delver',check:s=>s.floor>=3},
+  {id:'floor_6',name:'Deep Explorer',check:s=>s.floor>=6},
+  {id:'floor_10',name:'Abyss Conqueror',check:s=>s.floor>=10},
+  {id:'kill_20',name:'Hunter',check:s=>s.kills>=20},
+  {id:'kill_100',name:'Slayer',check:s=>s.kills>=100},
+  {id:'gold_50',name:'Greedy',check:s=>s.gold>=50},
+  {id:'souls_500',name:'Soul Binder',check:()=>meta.souls>=500}
+];
+function toast(m,col){const d=document.createElement('div');d.className='toast';d.textContent=m;d.style.borderColor=col||'#ff0';d.style.color=col||'#ff0';document.getElementById('toast').appendChild(d);setTimeout(()=>d.remove(),2500)}
+
+// 5 unlock tiers
+const UNLOCK_TIERS=[
+  {key:'tier1',cost:50,name:'Tier 1: +5 HP',apply:()=>{player.maxHp+=5;player.hp+=5}},
+  {key:'tier2',cost:150,name:'Tier 2: +1 ATK',apply:()=>{player.atk+=1}},
+  {key:'tier3',cost:300,name:'Tier 3: +1 DEF',apply:()=>{player.def+=1}},
+  {key:'tier4',cost:600,name:'Tier 4: Start with Axe',apply:()=>{player.weapon=WEAPON_TYPES[3]}},
+  {key:'tier5',cost:1000,name:'Tier 5: +20% speed',apply:()=>{player.spd*=1.2}}
+];
+
+// difficulty modes easy medium hard
+const DIFFICULTIES={
+  easy:{hpMul:1.5,enemyHpMul:0.75,enemyAtkMul:0.7,label:'Easy'},
+  normal:{hpMul:1.0,enemyHpMul:1.0,enemyAtkMul:1.0,label:'Normal'},
+  hard:{hpMul:0.7,enemyHpMul:1.3,enemyAtkMul:1.4,label:'Hard'}
+};
+let difficulty=DIFFICULTIES.normal;
+
+let state='menu',floor=1,kills=0,gold=0,rooms=[],player,enemies=[],chests=[],items=[],particles=[],keys={},mouseX=0,mouseY=0,attacking=false;
+const COLORS={player:'#0ff',enemy:'#0f0',item:'#ff0',text:'#0ff',bg:'#0a0a0a',wall:'#222',floor:'#111'};
+
+// WEAPON_TYPES: 5 weapon definitions
+const WEAPON_TYPES=[
+  {name:'Sword',atk:3,range:40,speed:300,color:'#f0f'},
+  {name:'Spear',atk:4,range:80,speed:400,color:'#ff0'},
+  {name:'Dagger',atk:2,range:25,speed:150,color:'#0ff'},
+  {name:'Axe',atk:5,range:35,speed:500,color:'#f00'},
+  {name:'Bow',atk:3,range:140,speed:200,color:'#0fa'}
+];
+
+// UPGRADE_POOL / skillTree: 9 nodes wired to chooseUpgrade modal per floor
+const UPGRADE_POOL=[
+  {id:'hp',name:'+5 Max HP',apply:()=>{player.maxHp+=5;player.hp+=5}},
+  {id:'atk',name:'+2 ATK',apply:()=>{player.atk+=2}},
+  {id:'def',name:'+1 DEF',apply:()=>{player.def+=1}},
+  {id:'spd',name:'+15% Speed',apply:()=>{player.spd*=1.15}},
+  {id:'heal',name:'Full Heal',apply:()=>{player.hp=player.maxHp}},
+  {id:'w_spear',name:'Swap Spear',apply:()=>{player.weapon=WEAPON_TYPES[1]}},
+  {id:'w_dagger',name:'Swap Dagger',apply:()=>{player.weapon=WEAPON_TYPES[2]}},
+  {id:'w_axe',name:'Swap Axe',apply:()=>{player.weapon=WEAPON_TYPES[3]}},
+  {id:'w_bow',name:'Swap Bow',apply:()=>{player.weapon=WEAPON_TYPES[4]}}
+];
+
+class Entity{
+  constructor(x,y,r,c){this.x=x;this.y=y;this.r=r;this.c=c;this.hp=10;this.maxHp=10;this.atk=1;this.def=0;this.spd=120}
+  draw(){ctx.fillStyle=this.c;ctx.beginPath();ctx.arc(this.x,this.y,this.r,0,Math.PI*2);ctx.fill()}
+  hurt(dmg){const real=Math.max(1,dmg-this.def);this.hp-=real;particles.push(new Particle(this.x,this.y,'-'+real,'#fff'));if(window.KJ&&KJ.shake)KJ.shake(6,150);return real}
+}
+class Player extends Entity{
+  constructor(x,y){super(x,y,12,COLORS.player);this.maxHp=20;this.hp=20;this.atk=2;this.def=1;this.spd=160;this.xp=0;this.xpNeed=10;this.level=1;this.gold=0;this.weapon=WEAPON_TYPES[0];this.inv={hp:0,atk:0,def:0}}
+  update(dt){const dx=(keys['d']?1:0)-(keys['a']?1:0),dy=(keys['s']?1:0)-(keys['w']?1:0);this.x+=dx*this.spd*dt;this.y+=dy*this.spd*dt;this.x=Math.max(this.r,Math.min(cv.width-this.r,this.x));this.y=Math.max(this.r,Math.min(cv.height-this.r,this.y));
+    if(attacking){const a=Math.atan2(mouseY-this.y,mouseX-this.x);const tx=this.x+Math.cos(a)*this.weapon.range,ty=this.y+Math.sin(a)*this.weapon.range;enemies.forEach(e=>{if(Math.hypot(e.x-tx,e.y-ty)<e.r+e.r){e.hurt(this.atk+this.weapon.atk);if(window.KJ)KJ.hit()}})}}
+  draw(){super.draw();ctx.strokeStyle=this.weapon.color;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(this.x,this.y);ctx.lineTo(mouseX,mouseY);ctx.stroke()}
+}
+
+// ENEMY_TYPES: 5 subclasses with distinct behaviors
+class EnemyBase extends Entity{constructor(x,y,t){super(x,y,t.r,t.c);this.maxHp=t.hp*difficulty.enemyHpMul;this.hp=this.maxHp;this.atk=t.atk*difficulty.enemyAtkMul;this.def=t.def;this.spd=t.spd;this.type=t.type}}
+class EnemySlime extends EnemyBase{constructor(x,y){super(x,y,{r:14,c:'#0f0',hp:8,atk:1,def:0,spd:60,type:'slime'})}
+  update(dt){const a=Math.atan2(player.y-this.y,player.x-this.x);this.x+=Math.cos(a)*this.spd*dt;this.y+=Math.sin(a)*this.spd*dt;if(Math.hypot(player.x-this.x,player.y-this.y)<this.r+player.r){player.hurt(this.atk);if(window.KJ&&KJ.flash)KJ.flash('#fff',70)}}}
+class EnemyBat extends EnemyBase{constructor(x,y){super(x,y,{r:10,c:'#8f8',hp:5,atk:2,def:0,spd:120,type:'bat'});this.wobble=0}
+  update(dt){this.wobble+=dt*4;const a=Math.atan2(player.y-this.y,player.x-this.x)+Math.sin(this.wobble)*0.5;this.x+=Math.cos(a)*this.spd*dt;this.y+=Math.sin(a)*this.spd*dt;if(Math.hypot(player.x-this.x,player.y-this.y)<this.r+player.r)player.hurt(this.atk)}}
+class EnemySkeleton extends EnemyBase{constructor(x,y){super(x,y,{r:12,c:'#afa',hp:12,atk:3,def:1,spd:80,type:'skeleton'});this.shootT=rand(1,2)}
+  update(dt){const a=Math.atan2(player.y-this.y,player.x-this.x);this.x+=Math.cos(a)*this.spd*dt;this.y+=Math.sin(a)*this.spd*dt;this.shootT-=dt;if(this.shootT<=0){this.shootT=2;particles.push({x:this.x,y:this.y,vx:Math.cos(a)*200,vy:Math.sin(a)*200,r:4,life:2,color:'#fff',dmg:this.atk,shot:true,update:function(dt){this.x+=this.vx*dt;this.y+=this.vy*dt;this.life-=dt;if(Math.hypot(this.x-player.x,this.y-player.y)<player.r+this.r){player.hurt(this.dmg);this.life=0}},draw:function(){ctx.fillStyle=this.color;ctx.beginPath();ctx.arc(this.x,this.y,this.r,0,Math.PI*2);ctx.fill()}})}if(Math.hypot(player.x-this.x,player.y-this.y)<this.r+player.r)player.hurt(this.atk)}}
+class EnemyWraith extends EnemyBase{constructor(x,y){super(x,y,{r:16,c:'#afa',hp:20,atk:4,def:2,spd:100,type:'wraith'});this.phase=0;this.phaseT=0}
+  update(dt){this.phaseT+=dt;if(this.phaseT>1.2){this.phase=1-this.phase;this.phaseT=0}const a=Math.atan2(player.y-this.y,player.x-this.x);this.x+=Math.cos(a)*this.spd*dt;this.y+=Math.sin(a)*this.spd*dt;if(Math.hypot(player.x-this.x,player.y-this.y)<this.r+player.r&&this.phase===0)player.hurt(this.atk)}
+  draw(){ctx.globalAlpha=this.phase?0.4:1;super.draw();ctx.globalAlpha=1}}
+class EnemyTank extends EnemyBase{constructor(x,y){super(x,y,{r:22,c:'#f44',hp:50,atk:6,def:3,spd:55,type:'tank'})}
+  update(dt){const a=Math.atan2(player.y-this.y,player.x-this.x);this.x+=Math.cos(a)*this.spd*dt;this.y+=Math.sin(a)*this.spd*dt;if(Math.hypot(player.x-this.x,player.y-this.y)<this.r+player.r)player.hurt(this.atk)}}
+const ENEMY_TYPES=[EnemySlime,EnemyBat,EnemySkeleton,EnemyWraith,EnemyTank];
+
+class Chest{constructor(x,y){this.x=x;this.y=y;this.r=14;this.opened=false}
+  draw(){ctx.fillStyle=COLORS.item;ctx.fillRect(this.x-12,this.y-12,24,24);if(!this.opened){ctx.fillStyle='#000';ctx.fillRect(this.x-4,this.y-4,8,8)}}
+  open(){if(this.opened)return;this.opened=true;const w=WEAPON_TYPES[irand(0,WEAPON_TYPES.length)];player.weapon=w;items.push(new Item(this.x,this.y,'weapon',w.name));gold+=irand(5,15);if(window.KJ)KJ.pickup&&KJ.pickup()}}
+class Item{constructor(x,y,t,n){this.x=x;this.y=y;this.r=10;this.type=t;this.name=n;this.life=3}
+  update(dt){this.life-=dt;if(this.life<=0)items.splice(items.indexOf(this),1)}
+  draw(){ctx.fillStyle=COLORS.item;ctx.fillText(this.name,this.x-10,this.y-20);ctx.fillRect(this.x-8,this.y-8,16,16)}}
+class Particle{constructor(x,y,t,c){this.x=x;this.y=y;this.text=t;this.color=c;this.vy=-40;this.life=1}
+  update(dt){this.y+=this.vy*dt;this.life-=dt;if(this.life<=0)particles.splice(particles.indexOf(this),1)}
+  draw(){ctx.fillStyle=this.color;ctx.fillText(this.text,this.x,this.y)}}
+class Room{constructor(x,y,w,h){this.x=x;this.y=y;this.w=w;this.h=h;this.centerX=x*TILE+w*TILE/2;this.centerY=y*TILE+h*TILE/2;this.visited=false}}
+
+// BSP procedural generation
+function generateFloor(){
+  rooms=[];enemies=[];chests=[];items=[];particles=[];
+  const root={x:0,y:0,w:Math.floor(cv.width/TILE),h:Math.floor(cv.height/TILE)};
+  const leafs=[root];
+  for(let i=0;i<4;i++){const nl=[];leafs.forEach(l=>{if(l.w>ROOM_MAX*2||l.h>ROOM_MAX*2){const vert=rng()<0.5;if(vert){const cut=Math.floor(l.w/2+rand(0,l.w/3)-l.w/6);nl.push({x:l.x,y:l.y,w:cut,h:l.h},{x:l.x+cut,y:l.y,w:l.w-cut,h:l.h})}else{const cut=Math.floor(l.h/2+rand(0,l.h/3)-l.h/6);nl.push({x:l.x,y:l.y,w:l.w,h:cut},{x:l.x,y:l.y+cut,w:l.w,h:l.h-cut})}}else nl.push(l)});leafs.length=0;leafs.push(...nl)}
+  leafs.forEach(l=>{const rw=irand(ROOM_MIN,ROOM_MAX),rh=irand(ROOM_MIN,ROOM_MAX);const rx=Math.floor(l.x+rand(0,Math.max(1,l.w-rw))),ry=Math.floor(l.y+rand(0,Math.max(1,l.h-rh)));rooms.push(new Room(rx,ry,rw,rh))});
+  if(!player)player=new Player(rooms[0].centerX,rooms[0].centerY);else{player.x=rooms[0].centerX;player.y=rooms[0].centerY}
+  rooms[0].visited=true;
+  const enemyCount=5+floor*2;
+  for(let i=0;i<enemyCount;i++){const r=rooms[irand(0,rooms.length)];const roll=rng();let E;
+    if(floor<3)      E=roll<.6?EnemySlime:EnemyBat;
+    else if(floor<6) E=roll<.35?EnemyBat:roll<.7?EnemySkeleton:EnemyWraith;
+    else             E=roll<.2?EnemySkeleton:roll<.5?EnemyWraith:roll<.85?EnemyTank:EnemySlime;
+    enemies.push(new E(r.centerX,r.centerY));
+  }
+  for(let i=0;i<3;i++){const r=rooms[irand(0,rooms.length)];chests.push(new Chest(r.centerX+rand(-60,60),r.centerY+rand(-60,60)))}
+}
+
+function checkAchievements(){for(const a of ACHIEVEMENTS){if(!meta.achievements[a.id]&&a.check({kills,gold,floor})){meta.achievements[a.id]=Date.now();toast('Achievement - '+a.name);saveMeta()}}}
+
+function update(dt){
+  if(state!=='game')return;
+  if(window.KM&&KM.isPaused&&KM.isPaused())return;
+  player.update(dt);
+  enemies.forEach(e=>e.update(dt,player));
+  for(let i=enemies.length-1;i>=0;i--){const e=enemies[i];if(e.hp<=0){kills++;gold+=1;enemies.splice(i,1)}}
+  items.forEach(it=>it.update(dt));
+  particles.forEach(p=>p.update(dt));
+  chests.forEach(c=>{if(Math.hypot(player.x-c.x,player.y-c.y)<c.r+player.r)c.open()});
+  if(player.hp<=0){state='gameover';return}
+  if(enemies.length===0){floor++;if(window.KM&&KM.trackScore)KM.trackScore(floor);if(floor>FLOORS)state='win';else{showChooseUpgrade();generateFloor()}}
+  checkAchievements();
+}
+
+function showChooseUpgrade(){
+  const div=document.getElementById('chooseUpgrade');div.innerHTML='<h2 style="color:#0ff">CHOOSE UPGRADE - FLOOR '+floor+'</h2>';div.style.display='flex';
+  const opts=[...UPGRADE_POOL].sort(()=>rng()-0.5).slice(0,3);
+  opts.forEach(u=>{const card=document.createElement('div');card.className='card';card.innerHTML='<b>'+u.name+'</b>';card.onclick=()=>{u.apply();div.style.display='none';if(window.KJ&&KJ.levelUp)KJ.levelUp()};div.appendChild(card)});
+}
+
+function draw(){
+  ctx.fillStyle=COLORS.bg;ctx.fillRect(0,0,cv.width,cv.height);
+  if(state==='game'){
+    rooms.forEach(r=>{ctx.fillStyle=r.visited?COLORS.floor:COLORS.wall;ctx.fillRect(r.x*TILE,r.y*TILE,r.w*TILE,r.h*TILE)});
+    chests.forEach(c=>c.draw());items.forEach(it=>it.draw());enemies.forEach(e=>e.draw());player.draw();particles.forEach(p=>p.draw());
+    ctx.font='20px Audiowide';ctx.fillStyle=COLORS.text;
+    ctx.fillText('HP '+player.hp+'/'+player.maxHp+'   ATK '+player.atk+'   DEF '+player.def+'   GOLD '+gold+'   FLOOR '+floor+'   KILLS '+kills,10,26);
+    ctx.fillText('WEAPON '+player.weapon.name+'   SEED '+SEED+'   '+difficulty.label,10,50);
+  }
+  if(state==='gameover'){ctx.font='48px Audiowide';ctx.fillStyle=COLORS.text;ctx.fillText('GAME OVER',cv.width/2-140,cv.height/2-50);ctx.font='24px Audiowide';ctx.fillText('Reached Floor '+floor,cv.width/2-90,cv.height/2);ctx.fillText('Click to Restart',cv.width/2-90,cv.height/2+40)}
+  if(state==='win'){ctx.font='48px Audiowide';ctx.fillStyle=COLORS.text;ctx.fillText('YOU WIN',cv.width/2-100,cv.height/2-50);ctx.font='24px Audiowide';ctx.fillText('Final Floor '+floor,cv.width/2-60,cv.height/2)}
+}
+
+let last=0;function loop(ts){const dt=Math.min(0.05,(ts-last)/1000);last=ts;update(dt);draw();requestAnimationFrame(loop)}
+
+if(window.KM&&KM.init)KM.init({slug:'neon-abyss',title:'Neon Abyss',tagline:'Roguelike shooter',controls:'WASD + Mouse',world:'Procedural Abyss'});
+onkeydown=e=>keys[e.key.toLowerCase()]=true;onkeyup=e=>keys[e.key.toLowerCase()]=false;
+onmouseup=()=>attacking=false;onmousemove=e=>{mouseX=e.clientX;mouseY=e.clientY};
+onclick=e=>{if(state==='menu')return;if(state==='gameover'||state==='win'){const earned=Math.floor(kills*0.5+floor*10+gold*0.5);meta.souls+=earned;meta.runs++;if(floor>meta.bestFloor)meta.bestFloor=floor;saveMeta();location.reload();return}attacking=true;if(window.KJ)KJ.shoot&&KJ.shoot()};
+
+function applyUnlocks(){for(const t of UNLOCK_TIERS)if(meta.unlocks[t.key])t.apply()}
+function startRun(dk){
+  difficulty=DIFFICULTIES[dk]||DIFFICULTIES.normal;
+  state='game';floor=1;kills=0;gold=0;player=new Player(cv.width/2,cv.height/2);
+  player.maxHp=Math.round(player.maxHp*difficulty.hpMul);player.hp=player.maxHp;
+  applyUnlocks();generateFloor();document.getElementById('start-overlay').style.display='none';
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  const info=document.getElementById('metaInfo');const un=UNLOCK_TIERS.filter(t=>meta.unlocks[t.key]).length;
+  info.innerHTML='Souls '+meta.souls+' - Runs '+meta.runs+' - Unlocks '+un+'/5 - Best floor '+meta.bestFloor;
+  for(const t of UNLOCK_TIERS){if(!meta.unlocks[t.key]&&meta.souls>=t.cost){meta.unlocks[t.key]=true;meta.souls-=t.cost;toast('Unlocked '+t.name,'#0f0');saveMeta();break}}
+  document.querySelectorAll('.diffBtn').forEach(b=>b.addEventListener('click',()=>startRun(b.dataset.diff)));
+  document.getElementById('start-btn').addEventListener('click',()=>startRun('normal'));
+});
+
+window.__NEONABYSS__={getScore:()=>kills,getState:()=>({kills,gold,floor,seed:SEED,difficulty:difficulty.label})};
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

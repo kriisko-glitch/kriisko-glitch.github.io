@@ -48,10 +48,23 @@
 <body data-mobile-controls="click">
   <div id="game-root"></div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.87.0/phaser.min.js"></script>
+  <script src="../shared/kriisko-juice.js"></script>
+  <script src="../shared/kriisko-meta.js"></script>
   <script>
 (function () {
   window.SpaceShooter = window.SpaceShooter || {};
 })();
+
+// Initialize Kriisko Meta layer
+if (window.KM) {
+  window.KM.init({
+    slug: 'space-shooter',
+    title: 'Space Shooter',
+    tagline: 'Wave-survival shoot-em-up — kill everything, survive the bosses',
+    controls: 'WASD / Arrows to move. Space or hold click to fire. P to pause.',
+    world: 'You versus the swarm. Tanks take 3 hits, bosses take 20.'
+  });
+}
 
 const STORAGE_KEY_HIGH_SCORE = 'spaceShooterHighScore';
 const GAME_WIDTH = 480;
@@ -495,6 +508,9 @@ class GameScene extends Phaser.Scene {
     if (this.isGameOver) {
       return;
     }
+    if (window.KM && window.KM.isPaused()) {
+      return;
+    }
 
     const deltaSeconds = delta / 1000;
     this.updateStars(deltaSeconds);
@@ -925,6 +941,7 @@ class GameScene extends Phaser.Scene {
     }
 
     this.spawnPlayerBullet(this.player.x, muzzleY, 0, -cfg.player.bulletSpeed);
+    if (window.KJ) window.KJ.shoot();
   }
 
   spawnPlayerBullet(x, y, vx, vy) {
@@ -1106,11 +1123,21 @@ class GameScene extends Phaser.Scene {
       if (enemy.enemyType === 'tank' || enemy.enemyType === 'boss') {
         this.flashEnemy(enemy);
       }
+      if (window.KJ) {
+        window.KJ.shake(4, 120);
+        window.KJ.flash('#ff6b6b', 60);
+        window.KJ.hit();
+      }
       return;
     }
 
     this.explodeAt(enemy.x, enemy.y);
     this.addScore(enemy.points);
+    if (window.KJ) {
+      window.KJ.shake(enemy.isBoss ? 12 : 8, enemy.isBoss ? 280 : 180);
+      window.KJ.particles(enemy.x, enemy.y, enemy.isBoss ? 28 : 16, '#ffc107');
+      window.KJ.hit();
+    }
 
     if (enemy.isBoss) {
       this.destroyObject(enemy, this.enemies);
@@ -1194,6 +1221,11 @@ class GameScene extends Phaser.Scene {
 
     this.lives -= 1;
     this.emitLivesUpdate();
+    if (window.KJ) {
+      window.KJ.shake(10, 220);
+      window.KJ.flash('#ff0040', 100);
+      window.KJ.hit();
+    }
 
     if (this.lives <= 0) {
       this.triggerGameOver();
@@ -1263,6 +1295,11 @@ class GameScene extends Phaser.Scene {
     } else {
       this.multiShotUntil = Math.max(this.multiShotUntil, now + this.cfg.powerup.durationMs);
     }
+    if (window.KJ) {
+      window.KJ.particles(powerup.x, powerup.y, 12, '#ffc107');
+      window.KJ.pickup();
+      window.KJ.flash('#4caf50', 80);
+    }
     this.destroyObject(powerup, this.powerups);
   }
 
@@ -1281,6 +1318,7 @@ class GameScene extends Phaser.Scene {
       }
       this.registry.set('highScore', this.highScore);
     }
+    if (window.KM) window.KM.trackScore(this.score);
     this.emitScoreUpdate();
   }
 
@@ -1317,6 +1355,11 @@ class GameScene extends Phaser.Scene {
     this.isGameOver = true;
     this.controlsEnabled = false;
     this.pointerHeld = false;
+    if (window.KJ) {
+      window.KJ.shake(12, 300);
+      window.KJ.flash('#ff0040', 160);
+      window.KJ.gameOver();
+    }
 
     if (this.flashTween) {
       this.flashTween.stop();
@@ -1328,6 +1371,12 @@ class GameScene extends Phaser.Scene {
       this.events.emit('gameOver', this.score);
       if (this.scene.isActive('HUDScene')) {
         this.scene.stop('HUDScene');
+      }
+      if (window.KM) {
+        window.KM.gameOver(this.score, {
+          cause: 'Destroyed in action',
+          onRetry: () => this.scene.start('GameScene'),
+        });
       }
       this.scene.start('GameOverScene', {
         score: this.score,
@@ -1671,9 +1720,51 @@ const phaserConfig = {
 
 window.SpaceShooter.game = new Phaser.Game(phaserConfig);
 
+// Debug API for evaluator/tests
+window.__SPACE_SHOOTER__ = Object.assign(window.__SPACE_SHOOTER__ || {}, {
+  getScore: () => {
+    const s = window.SpaceShooter.game?.scene?.getScene('GameScene');
+    return s ? s.score : 0;
+  },
+  getState: () => {
+    const s = window.SpaceShooter.game?.scene?.getScene('GameScene');
+    if (!s) return 'loading';
+    if (s.isGameOver) return 'gameover';
+    return 'playing';
+  },
+  getLives: () => {
+    const s = window.SpaceShooter.game?.scene?.getScene('GameScene');
+    return s ? s.lives : 0;
+  },
+  getWave: () => {
+    const s = window.SpaceShooter.game?.scene?.getScene('GameScene');
+    return s ? s.wave : 0;
+  },
+});
+
 
   </script>
   <script src="../shared/leaderboard.js"></script>
   <script src="../shared/mobile-controls.js"></script>
+  <div id="km-difficulty" style="position:fixed;top:50px;right:14px;z-index:40;display:flex;gap:4px;font-size:11px;font-family:monospace;">
+    <button class="km-diff" data-diff="easy" style="padding:2px 8px;cursor:pointer;">Easy</button>
+    <button class="km-diff km-active" data-diff="normal" style="padding:2px 8px;cursor:pointer;background:#0ff;color:#000;">Normal</button>
+    <button class="km-diff" data-diff="hard" style="padding:2px 8px;cursor:pointer;">Hard</button>
+  </div>
+  <script>
+    (function(){
+      try { var saved = localStorage.getItem('kriisko:difficulty') || 'normal';
+        document.querySelectorAll('.km-diff').forEach(function(b){ b.classList.toggle('km-active', b.dataset.diff === saved); });
+      } catch(_){}
+      document.querySelectorAll('.km-diff').forEach(function(b){
+        b.addEventListener('click', function(e){
+          document.querySelectorAll('.km-diff').forEach(function(x){ x.classList.remove('km-active'); x.style.background=''; x.style.color=''; });
+          e.target.classList.add('km-active');
+          e.target.style.background='#0ff'; e.target.style.color='#000';
+          try { localStorage.setItem('kriisko:difficulty', e.target.dataset.diff); } catch(_){}
+        });
+      });
+    })();
+  </script>
 </body>
 </html>

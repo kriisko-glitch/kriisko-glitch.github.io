@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Snake Plus</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Audiowide&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0; padding: 0; background: #0a0a0a;
+            display: flex; justify-content: center; align-items: center;
+            min-height: 100vh; font-family: 'Audiowide', sans-serif; overflow: hidden;
+            color: #0f0;
+        }
+        canvas { border: 2px solid #00ff00; box-shadow: 0 0 20px #00ff00; }
+        #hud {
+            position: absolute; top: 10px; left: 10px;
+            font-size: 18px; color: #00ff00;
+            text-shadow: 0 0 8px #00ff00;
+        }
+        #chip-row {
+            position: absolute; top: 10px; right: 14px;
+            display: flex; gap: 6px; font-size: 14px;
+        }
+        .chip {
+            padding: 4px 10px; border-radius: 12px;
+            background: rgba(0,255,0,0.08); border: 1px solid rgba(0,255,0,0.4);
+            color: #0f0; text-shadow: 0 0 4px #0f0;
+        }
+        .chip.gold { color: #ffd54f; border-color: rgba(255,213,79,0.5); text-shadow: 0 0 4px #ffd54f; }
+        .chip.rose { color: #ff4081; border-color: rgba(255,64,129,0.5); text-shadow: 0 0 4px #ff4081; }
+        .overlay {
+            position: fixed; inset: 0; display: none;
+            flex-direction: column; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.88); z-index: 20; padding: 1rem;
+            font-family: 'Audiowide', sans-serif; color: #0f0;
+        }
+        .overlay.visible { display: flex; }
+        .overlay h2 { color: #ffd54f; margin: 0 0 0.5rem; font-size: 2rem; text-shadow: 0 0 16px #ffd54f; }
+        .overlay p { margin: 0 0 1rem; opacity: 0.85; text-align: center; font-size: 0.9rem; }
+        .diff-row { display: flex; gap: 8px; margin-bottom: 1rem; }
+        .diff-btn {
+            padding: 0.5rem 1rem; cursor: pointer; background: transparent;
+            border: 2px solid #0f0; color: #0f0; border-radius: 6px;
+            font-family: inherit; font-size: 0.9rem;
+        }
+        .diff-btn.active { background: #0f0; color: #000; }
+        .go-btn {
+            padding: 0.6rem 1.4rem; cursor: pointer; background: #00ff00;
+            color: #000; border: none; border-radius: 6px; font-weight: bold;
+            font-family: inherit; font-size: 1rem;
+        }
+        .upgrade-card {
+            background: rgba(0,64,0,0.3); border: 2px solid #0f0;
+            border-radius: 8px; padding: 0.6rem 0.9rem; margin: 4px 0;
+            cursor: pointer; min-width: 240px; text-align: left;
+            color: #eee; font-family: inherit;
+        }
+        .upgrade-card:hover { background: rgba(0,128,0,0.5); }
+        .upgrade-card .uname { font-size: 1rem; color: #ffd54f; display: block; margin-bottom: 3px; text-shadow: 0 0 6px #ffd54f; }
+        .upgrade-card .udesc { font-size: 0.72rem; color: #aaffaa; opacity: 0.9; }
+        .ach-toast {
+            position: fixed; top: 18px; right: 18px;
+            background: linear-gradient(135deg, #004000, #00ff00);
+            padding: 10px 14px; border-radius: 8px; color: #000;
+            font-family: 'Audiowide', sans-serif; font-size: 0.9rem; font-weight: bold;
+            box-shadow: 0 0 20px rgba(0,255,0,0.6);
+            z-index: 100; pointer-events: none;
+            animation: nspSlide 2.5s ease-out forwards;
+        }
+        @keyframes nspSlide {
+            0% { transform: translateX(120%); opacity: 0; }
+            12% { transform: translateX(0); opacity: 1; }
+            85% { transform: translateX(0); opacity: 1; }
+            100% { transform: translateX(120%); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="hud"></div>
+    <div id="chip-row">
+      <span class="chip gold" id="coin-chip">&#9733; 0</span>
+      <span class="chip" id="best-chip">Best 0</span>
+      <span class="chip rose" id="diff-chip">Normal</span>
+    </div>
+    <div id="start-modal" class="overlay visible">
+      <h2>NEON SNAKE PLUS</h2>
+      <p>WASD to move. Upgrades every 50 pts.<br>Avoid obstacles - collect power-ups!</p>
+      <div class="diff-row" id="diff-row">
+        <button class="diff-btn" data-diff="easy">Easy</button>
+        <button class="diff-btn active" data-diff="normal">Normal</button>
+        <button class="diff-btn" data-diff="hard">Hard</button>
+      </div>
+      <button class="go-btn" id="start-btn">Start</button>
+    </div>
+    <div id="upgrade-modal" class="overlay">
+      <h2>Level Up!</h2>
+      <p>Pick one upgrade</p>
+      <div id="upgrade-choices"></div>
+    </div>
+    <script src="../shared/kriisko-juice.js"></script>
+    <script src="../shared/kriisko-meta.js"></script>
+    <script>
+        const SLUG = 'neon-snake-plus';
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const hud = document.getElementById('hud');
+
+        canvas.width = window.innerWidth - 40;
+        canvas.height = window.innerHeight - 40;
+
+        const GRID_SIZE = 20;
+        const CELL_SIZE = Math.min(canvas.width / GRID_SIZE, canvas.height / GRID_SIZE);
+        const GRID_WIDTH = Math.floor(canvas.width / CELL_SIZE);
+        const GRID_HEIGHT = Math.floor(canvas.height / CELL_SIZE);
+
+        // ===== META =====
+        function lget(k, d) { try { const v = localStorage.getItem('kriisko:' + SLUG + ':' + k); return v === null ? d : v; } catch (_) { return d; } }
+        function lset(k, v) { try { localStorage.setItem('kriisko:' + SLUG + ':' + k, String(v)); } catch (_) {} }
+        function getCoins() { return parseInt(lget('coins', '0'), 10) || 0; }
+        function addCoins(n) { lset('coins', getCoins() + n); }
+        function getBest() { return parseInt(lget('best', '0'), 10) || 0; }
+        function setBest(n) { if (n > getBest()) lset('best', n); }
+        function getUnlocked() { try { return JSON.parse(lget('ach', '[]')); } catch (_) { return []; } }
+        function unlock(id, name) {
+            const arr = getUnlocked();
+            if (arr.includes(id)) return false;
+            arr.push(id); lset('ach', JSON.stringify(arr));
+            const el = document.createElement('div');
+            el.className = 'ach-toast'; el.textContent = 'Achievement: ' + name;
+            document.body.appendChild(el); setTimeout(() => el.remove(), 2600);
+            return true;
+        }
+
+        // ===== DIFFICULTY =====
+        const DIFFICULTIES = {
+            easy:   { speed: 130, obstacleRate: 0.05, pointsMod: 0.8, name: 'Easy' },
+            normal: { speed: 100, obstacleRate: 0.1,  pointsMod: 1.0, name: 'Normal' },
+            hard:   { speed: 70,  obstacleRate: 0.18, pointsMod: 1.4, name: 'Hard' }
+        };
+        let selectedMode = lget('difficulty', 'normal');
+
+        // ===== ENEMY TYPES (obstacles) =====
+        class EnemyStaticBlock {
+            constructor(x, y) { this.x = x; this.y = y; this.type = 'block'; this.color = '#ff0040'; }
+            update() {}
+        }
+        class EnemyRoamer {
+            constructor(x, y) { this.x = x; this.y = y; this.type = 'roamer'; this.color = '#ff8800'; this.cooldown = 0; }
+            update() {
+                this.cooldown--;
+                if (this.cooldown <= 0) {
+                    this.cooldown = 12;
+                    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+                    const d = dirs[Math.floor(Math.random() * dirs.length)];
+                    const nx = (this.x + d[0] + GRID_WIDTH) % GRID_WIDTH;
+                    const ny = (this.y + d[1] + GRID_HEIGHT) % GRID_HEIGHT;
+                    this.x = nx; this.y = ny;
+                }
+            }
+        }
+        class EnemySpike {
+            constructor(x, y) { this.x = x; this.y = y; this.type = 'spike'; this.color = '#ffff00'; this.ttl = 300; this.armed = false; }
+            update() { this.ttl--; this.armed = this.ttl < 260; }
+        }
+        const ENEMY_TYPES = [
+            { name: 'block',  ctor: EnemyStaticBlock, afterScore: 20,  weight: 0.5 },
+            { name: 'roamer', ctor: EnemyRoamer,      afterScore: 80,  weight: 0.3 },
+            { name: 'spike',  ctor: EnemySpike,       afterScore: 140, weight: 0.2 }
+        ];
+
+        // ===== UPGRADE POOL =====
+        const UPGRADE_POOL = [
+            { id: 'magnetRange', name: 'Magnet+',    desc: '+2 food pull range' },
+            { id: 'shieldLong',  name: 'Iron Hide',  desc: '+240 shield ticks now' },
+            { id: 'phaseWalls',  name: 'Phase',      desc: '180 phase-through-walls ticks' },
+            { id: 'combo',       name: '+Combo',     desc: '+2 points per food' },
+            { id: 'doubleCoin',  name: 'Coin Rush',  desc: '+1 coin per food forever' },
+            { id: 'shorter',     name: 'Shed',       desc: 'Shorten tail by 4' },
+            { id: 'slowmoBank',  name: 'Time Bank',  desc: '+240 slow-mo ticks' }
+        ];
+
+        // ===== ACHIEVEMENTS =====
+        const ACHIEVEMENTS = [
+            { id: 'first_food',  name: 'First Bite',       test: s => s.score >= 10 },
+            { id: 'score_100',   name: 'Centurion',        test: s => s.score >= 100 },
+            { id: 'score_300',   name: 'Neon Legend',      test: s => s.score >= 300 },
+            { id: 'long_snake',  name: 'Serpent King',     test: s => s.snakeLen >= 25 },
+            { id: 'hard_mode',   name: 'Hard Mode Hero',   test: s => s.mode === 'hard' && s.score >= 120 },
+            { id: 'no_upgrades', name: 'Purist',           test: s => s.gameOver && s.upgradesChosen === 0 && s.score >= 80 },
+            { id: 'coin_100',    name: 'Hoarder',          test: s => s.totalCoins >= 100 },
+            { id: 'phase_master',name: 'Phase Shifter',    test: s => s.usedPhase }
+        ];
+
+        let gameState = 'start';
+        let score = 0;
+        let highScore = getBest();
+        let snake = [];
+        let direction = {x: 1, y: 0};
+        let nextDirection = {x: 1, y: 0};
+        let food = {};
+        let powerUps = [];
+        let obstacles = [];
+        let particles = [];
+        let gameSpeed = 100;
+        let lastUpdate = 0;
+        let speedBoostTimer = 0;
+        let slowMoTimer = 0;
+        let doublePointsTimer = 0;
+        let phaseThroughTimer = 0;
+        let foodPulse = 0;
+        // depth
+        let upgrades = [];
+        let upgradesChosen = 0;
+        let nextUpgradeAt = 50;
+        let magnetRange = 0;
+        let comboBonus = 0;
+        let coinPerFood = 1;
+        let runCoins = 0;
+        let paused = false;
+        let usedPhaseThisRun = false;
+        let startTime = 0;
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x; this.y = y;
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = (Math.random() - 0.5) * 4;
+                this.life = 1; this.color = color;
+            }
+            update() {
+                this.x += this.vx; this.y += this.vy;
+                this.life -= 0.02;
+                this.vx *= 0.98; this.vy *= 0.98;
+            }
+            draw() {
+                ctx.save(); ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 10; ctx.shadowColor = this.color;
+                ctx.fillRect(this.x - 2, this.y - 2, 4, 4);
+                ctx.restore();
+            }
+        }
+
+        // ===== UI =====
+        const startModal = document.getElementById('start-modal');
+        const upgradeModal = document.getElementById('upgrade-modal');
+        const upgradeChoicesEl = document.getElementById('upgrade-choices');
+        const diffRow = document.getElementById('diff-row');
+        const startBtn = document.getElementById('start-btn');
+        const coinChipEl = document.getElementById('coin-chip');
+        const bestChipEl = document.getElementById('best-chip');
+        const diffChipEl = document.getElementById('diff-chip');
+
+        function updateChips() {
+            coinChipEl.innerHTML = '&#9733; ' + getCoins();
+            bestChipEl.textContent = 'Best ' + getBest();
+            diffChipEl.textContent = DIFFICULTIES[selectedMode].name;
+        }
+
+        Array.from(diffRow.querySelectorAll('.diff-btn')).forEach(btn => {
+            if (btn.getAttribute('data-diff') === selectedMode) btn.classList.add('active');
+            else btn.classList.remove('active');
+            btn.addEventListener('click', () => {
+                selectedMode = btn.getAttribute('data-diff');
+                lset('difficulty', selectedMode);
+                Array.from(diffRow.querySelectorAll('.diff-btn')).forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                updateChips();
+            });
+        });
+        startBtn.addEventListener('click', () => {
+            startModal.classList.remove('visible');
+            gameState = 'playing';
+            init();
+        });
+
+        function chooseUpgrade() {
+            if (paused) return;
+            paused = true;
+            const pool = UPGRADE_POOL.slice();
+            for (let i = pool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [pool[i], pool[j]] = [pool[j], pool[i]];
+            }
+            const choices = pool.slice(0, 3);
+            upgradeChoicesEl.innerHTML = '';
+            choices.forEach(u => {
+                const b = document.createElement('button');
+                b.className = 'upgrade-card';
+                b.innerHTML = '<span class="uname">' + u.name + '</span><span class="udesc">' + u.desc + '</span>';
+                b.addEventListener('click', () => pickUpgrade(u));
+                upgradeChoicesEl.appendChild(b);
+            });
+            upgradeModal.classList.add('visible');
+        }
+        function pickUpgrade(u) {
+            upgrades.push(u.id);
+            upgradesChosen++;
+            applyUpgrade(u.id);
+            upgradeModal.classList.remove('visible');
+            paused = false;
+        }
+        function applyUpgrade(id) {
+            if (id === 'magnetRange') magnetRange = Math.min(magnetRange + 2, 6);
+            if (id === 'shieldLong')  phaseThroughTimer += 240;
+            if (id === 'phaseWalls')  { phaseThroughTimer += 180; usedPhaseThisRun = true; }
+            if (id === 'combo')       comboBonus += 2;
+            if (id === 'doubleCoin')  coinPerFood += 1;
+            if (id === 'shorter')     { for (let i = 0; i < 4 && snake.length > 3; i++) snake.pop(); }
+            if (id === 'slowmoBank')  slowMoTimer += 240;
+        }
+
+        function checkAchievements(opts) {
+            const stats = {
+                score, snakeLen: snake.length,
+                mode: selectedMode, upgradesChosen,
+                totalCoins: getCoins(), usedPhase: usedPhaseThisRun,
+                gameOver: !!opts && !!opts.gameOver
+            };
+            const unlocked = getUnlocked();
+            for (const a of ACHIEVEMENTS) {
+                if (!unlocked.includes(a.id) && a.test(stats)) unlock(a.id, a.name);
+            }
+        }
+
+        function init() {
+            KM.init({
+                slug: SLUG,
+                title: 'Neon Snake Plus',
+                tagline: 'WASD to Move, Collect Power-ups',
+                controls: 'WASD',
+                world: 'arcade',
+                difficulty: selectedMode
+            });
+            const cfg = DIFFICULTIES[selectedMode];
+            snake = [{x: Math.floor(GRID_WIDTH / 2), y: Math.floor(GRID_HEIGHT / 2)}];
+            direction = {x: 1, y: 0};
+            nextDirection = {x: 1, y: 0};
+            score = 0;
+            gameSpeed = cfg.speed;
+            speedBoostTimer = 0; slowMoTimer = 0;
+            doublePointsTimer = 0; phaseThroughTimer = 0;
+            powerUps = []; obstacles = []; particles = [];
+            upgrades = []; upgradesChosen = 0;
+            nextUpgradeAt = 50; magnetRange = 0;
+            comboBonus = 0; coinPerFood = 1;
+            runCoins = 0; paused = false;
+            usedPhaseThisRun = false;
+            startTime = Date.now();
+            generateFood();
+            updateChips();
+        }
+
+        function generateFood() {
+            do {
+                food = { x: Math.floor(Math.random() * GRID_WIDTH), y: Math.floor(Math.random() * GRID_HEIGHT) };
+            } while (snake.some(s => s.x === food.x && s.y === food.y) ||
+                     obstacles.some(o => o.x === food.x && o.y === food.y));
+        }
+
+        function generatePowerUp() {
+            if (Math.random() < 0.3 && powerUps.length < 2) {
+                let powerUp;
+                do {
+                    powerUp = {
+                        x: Math.floor(Math.random() * GRID_WIDTH),
+                        y: Math.floor(Math.random() * GRID_HEIGHT),
+                        type: ['speed', 'slow', 'double', 'phase'][Math.floor(Math.random() * 4)]
+                    };
+                } while (snake.some(s => s.x === powerUp.x && s.y === powerUp.y) ||
+                         obstacles.some(o => o.x === powerUp.x && o.y === powerUp.y) ||
+                         powerUps.some(p => p.x === powerUp.x && p.y === powerUp.y));
+                powerUps.push(powerUp);
+            }
+        }
+
+        function generateObstacle() {
+            const cfg = DIFFICULTIES[selectedMode];
+            if (obstacles.length >= 10) return;
+            for (const et of ENEMY_TYPES) {
+                if (score < et.afterScore) continue;
+                if (Math.random() > cfg.obstacleRate * et.weight) continue;
+                let tries = 10;
+                while (tries--) {
+                    const c = {x: Math.floor(Math.random() * GRID_WIDTH), y: Math.floor(Math.random() * GRID_HEIGHT)};
+                    if (snake.some(s => s.x === c.x && s.y === c.y)) continue;
+                    if (c.x === food.x && c.y === food.y) continue;
+                    if (powerUps.some(p => p.x === c.x && p.y === c.y)) continue;
+                    if (obstacles.some(o => o.x === c.x && o.y === c.y)) continue;
+                    obstacles.push(new et.ctor(c.x, c.y));
+                    return;
+                }
+            }
+        }
+
+        function updateSnake() {
+            direction = {...nextDirection};
+            const head = {
+                x: (snake[0].x + direction.x + GRID_WIDTH) % GRID_WIDTH,
+                y: (snake[0].y + direction.y + GRID_HEIGHT) % GRID_HEIGHT
+            };
+
+            // obstacle update
+            for (const o of obstacles) o.update();
+            obstacles = obstacles.filter(o => !(o.type === 'spike' && o.ttl <= 0));
+
+            const obHit = obstacles.find(o => o.x === head.x && o.y === head.y && (o.type !== 'spike' || o.armed));
+            if (obHit && phaseThroughTimer <= 0) {
+                setBest(score); addCoins(runCoins);
+                checkAchievements({ gameOver: true });
+                updateChips();
+                KM.gameOver(score, { cause: 'hit_' + obHit.type, onRetry: () => { gameState = 'playing'; init(); } });
+                return;
+            }
+
+            if (phaseThroughTimer <= 0 && snake.some(s => s.x === head.x && s.y === head.y)) {
+                setBest(score); addCoins(runCoins);
+                checkAchievements({ gameOver: true });
+                updateChips();
+                KM.gameOver(score, { cause: 'self_collision', onRetry: () => { gameState = 'playing'; init(); } });
+                return;
+            }
+
+            snake.unshift(head);
+
+            // magnet
+            if (magnetRange > 0) {
+                const dx = Math.abs(head.x - food.x), dy = Math.abs(head.y - food.y);
+                if (dx + dy <= magnetRange) {
+                    if (food.x < head.x) food.x++; else if (food.x > head.x) food.x--;
+                    if (food.y < head.y) food.y++; else if (food.y > head.y) food.y--;
+                }
+            }
+
+            // food
+            if (head.x === food.x && head.y === food.y) {
+                const baseGain = (doublePointsTimer > 0 ? 20 : 10) + comboBonus;
+                const gain = Math.round(baseGain * DIFFICULTIES[selectedMode].pointsMod);
+                score += gain;
+                runCoins += coinPerFood;
+                KM.trackScore(score);
+                generateFood();
+                generatePowerUp();
+                generateObstacle();
+                if (gameSpeed > 40) gameSpeed -= 2;
+                for (let i = 0; i < 10; i++) {
+                    particles.push(new Particle(
+                        food.x * CELL_SIZE + CELL_SIZE / 2,
+                        food.y * CELL_SIZE + CELL_SIZE / 2,
+                        '#ff0000'
+                    ));
+                    KJ.particles(food.x * CELL_SIZE + CELL_SIZE / 2, food.y * CELL_SIZE + CELL_SIZE / 2, 14, '#ff0000');
+                }
+                KJ.pickup();
+                if (score >= nextUpgradeAt) {
+                    nextUpgradeAt += 50;
+                    checkAchievements();
+                    chooseUpgrade();
+                    return;
+                }
+            } else {
+                snake.pop();
+            }
+
+            // power-ups
+            powerUps = powerUps.filter(p => {
+                if (p.x === head.x && p.y === head.y) {
+                    switch (p.type) {
+                        case 'speed':  speedBoostTimer = 300; break;
+                        case 'slow':   slowMoTimer = 300; break;
+                        case 'double': doublePointsTimer = 300; break;
+                        case 'phase':  phaseThroughTimer = 300; usedPhaseThisRun = true; break;
+                    }
+                    for (let i = 0; i < 10; i++) {
+                        particles.push(new Particle(
+                            p.x * CELL_SIZE + CELL_SIZE / 2,
+                            p.y * CELL_SIZE + CELL_SIZE / 2,
+                            p.type === 'speed' ? '#ffff00' :
+                            p.type === 'slow' ? '#0080ff' :
+                            p.type === 'double' ? '#8000ff' : '#00ffff'
+                        ));
+                    }
+                    KJ.pickup();
+                    return false;
+                }
+                return true;
+            });
+
+            if (speedBoostTimer > 0) speedBoostTimer--;
+            if (slowMoTimer > 0) slowMoTimer--;
+            if (doublePointsTimer > 0) doublePointsTimer--;
+            if (phaseThroughTimer > 0) phaseThroughTimer--;
+            checkAchievements();
+        }
+
+        function draw() {
+            ctx.fillStyle = '#1a0033';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.strokeStyle = '#330066';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= GRID_WIDTH; i++) {
+                ctx.beginPath(); ctx.moveTo(i * CELL_SIZE, 0); ctx.lineTo(i * CELL_SIZE, canvas.height); ctx.stroke();
+            }
+            for (let i = 0; i <= GRID_HEIGHT; i++) {
+                ctx.beginPath(); ctx.moveTo(0, i * CELL_SIZE); ctx.lineTo(canvas.width, i * CELL_SIZE); ctx.stroke();
+            }
+
+            foodPulse += 0.1;
+            const pulseSize = Math.sin(foodPulse) * 3;
+
+            ctx.fillStyle = '#ff0000';
+            ctx.shadowBlur = 20; ctx.shadowColor = '#ff0000';
+            ctx.fillRect(
+                food.x * CELL_SIZE + 2 - pulseSize,
+                food.y * CELL_SIZE + 2 - pulseSize,
+                CELL_SIZE - 4 + pulseSize * 2,
+                CELL_SIZE - 4 + pulseSize * 2
+            );
+
+            powerUps.forEach(p => {
+                ctx.fillStyle =
+                    p.type === 'speed' ? '#ffff00' :
+                    p.type === 'slow' ? '#0080ff' :
+                    p.type === 'double' ? '#8000ff' : '#00ffff';
+                ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 15;
+                ctx.fillRect(p.x * CELL_SIZE + 4, p.y * CELL_SIZE + 4, CELL_SIZE - 8, CELL_SIZE - 8);
+            });
+
+            obstacles.forEach(o => {
+                ctx.fillStyle = o.color;
+                ctx.shadowColor = o.color; ctx.shadowBlur = 10;
+                if (o.type === 'spike' && !o.armed) {
+                    ctx.globalAlpha = 0.4;
+                }
+                ctx.fillRect(o.x * CELL_SIZE + 2, o.y * CELL_SIZE + 2, CELL_SIZE - 4, CELL_SIZE - 4);
+                ctx.globalAlpha = 1;
+            });
+
+            ctx.shadowBlur = 15;
+            const invinc = phaseThroughTimer > 0;
+            snake.forEach((s, i) => {
+                ctx.fillStyle = invinc ? '#ff00ff' : (i === 0 ? '#00ff80' : '#00ff00');
+                ctx.shadowColor = ctx.fillStyle;
+                ctx.fillRect(s.x * CELL_SIZE + 2, s.y * CELL_SIZE + 2, CELL_SIZE - 4, CELL_SIZE - 4);
+            });
+
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => { p.update(); p.draw(); });
+            ctx.shadowBlur = 0;
+
+            hud.innerHTML = `
+                Score: ${score} (Coins +${runCoins})<br>
+                High Score: ${getBest()}<br>
+                Upgrades: ${upgrades.length}<br>
+                ${speedBoostTimer > 0 ? `Speed Boost: ${Math.ceil(speedBoostTimer / 60)}s<br>` : ''}
+                ${slowMoTimer > 0 ? `Slow Motion: ${Math.ceil(slowMoTimer / 60)}s<br>` : ''}
+                ${doublePointsTimer > 0 ? `Double Points: ${Math.ceil(doublePointsTimer / 60)}s<br>` : ''}
+                ${phaseThroughTimer > 0 ? `Phase Mode: ${Math.ceil(phaseThroughTimer / 60)}s` : ''}
+            `;
+        }
+
+        function drawStartScreen() {
+            ctx.fillStyle = '#1a0033';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#00ff00';
+            ctx.font = '60px Audiowide';
+            ctx.textAlign = 'center';
+            ctx.shadowBlur = 30; ctx.shadowColor = '#00ff00';
+            ctx.fillText('NEON SNAKE PLUS', canvas.width / 2, canvas.height / 2 - 100);
+            ctx.font = '24px Audiowide';
+            ctx.fillText('Pick difficulty above', canvas.width / 2, canvas.height / 2 + 80);
+            ctx.shadowBlur = 0; ctx.textAlign = 'left';
+        }
+
+        function gameLoop(timestamp) {
+            if (KM.isPaused() || paused) {
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+            if (gameState === 'start') {
+                drawStartScreen();
+            } else {
+                const deltaTime = timestamp - lastUpdate;
+                const currentSpeed = speedBoostTimer > 0 ? gameSpeed / 2 :
+                                   slowMoTimer > 0 ? gameSpeed * 2 : gameSpeed;
+                if (deltaTime > currentSpeed) {
+                    updateSnake();
+                    lastUpdate = timestamp;
+                }
+                draw();
+            }
+            requestAnimationFrame(gameLoop);
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (paused) return;
+            if (gameState === 'playing') {
+                switch (e.key.toLowerCase()) {
+                    case 'w': case 'arrowup':
+                        if (direction.y === 0) nextDirection = {x: 0, y: -1}; break;
+                    case 's': case 'arrowdown':
+                        if (direction.y === 0) nextDirection = {x: 0, y: 1}; break;
+                    case 'a': case 'arrowleft':
+                        if (direction.x === 0) nextDirection = {x: -1, y: 0}; break;
+                    case 'd': case 'arrowright':
+                        if (direction.x === 0) nextDirection = {x: 1, y: 0}; break;
+                }
+            }
+        });
+
+        updateChips();
+        requestAnimationFrame(gameLoop);
+
+        window.__NEON_SNAKE_PLUS__ = {
+            getScore:        () => score,
+            getState:        () => gameState,
+            getSnakeLength:  () => snake.length,
+            getSpeed:        () => gameSpeed,
+            getUpgrades:     () => upgrades.slice(),
+            getDifficulty:   () => selectedMode,
+            getCoins:        () => getCoins(),
+            getAchievements: () => getUnlocked(),
+            getObstacles:    () => obstacles.map(o => ({x: o.x, y: o.y, type: o.type}))
+        };
+    </script>
+</body>
+</html>

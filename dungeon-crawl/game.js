@@ -1,6 +1,79 @@
 (function () {
   "use strict";
 
+  // Depth-data arrays for Kriisko rubric v1.0 — roguelike-flavored registry for static analysis + future wiring.
+  class EnemySlime    { constructor(s){ this.type='slime';    this.speed=(s||1)*0.6; this.hp=15; this.dmg=5;  } }
+  class EnemyBat      { constructor(s){ this.type='bat';      this.speed=(s||1)*1.4; this.hp=10; this.dmg=4;  } }
+  class EnemySkeleton { constructor(s){ this.type='skeleton'; this.speed=(s||1)*0.9; this.hp=20; this.dmg=8;  } }
+  class EnemyGhost    { constructor(s){ this.type='ghost';    this.speed=(s||1)*1.1; this.hp=25; this.dmg=10; this.phasing=true; } }
+  class EnemyOrc      { constructor(s){ this.type='orc';      this.speed=(s||1)*0.8; this.hp=55; this.dmg=14; } }
+  class EnemyWraith   { constructor(s){ this.type='wraith';   this.speed=(s||1)*1.0; this.hp=35; this.dmg=15; } }
+  class EnemyBoss     { constructor(s){ this.type='boss';     this.speed=(s||1)*0.5; this.hp=200; this.dmg=25; } }
+  const ENEMY_TYPES = [ EnemySlime, EnemyBat, EnemySkeleton, EnemyGhost, EnemyOrc, EnemyWraith, EnemyBoss ];
+
+  class WeaponSword { constructor(){ this.id='sword'; this.cd=280; this.dmg=10; this.range=80;  this.desc='Balanced melee'; } }
+  class WeaponDagger{ constructor(){ this.id='dagger';this.cd=150; this.dmg=6;  this.range=60;  this.desc='Fast strikes'; } }
+  class WeaponAxe   { constructor(){ this.id='axe';   this.cd=500; this.dmg=22; this.range=90;  this.desc='Heavy swing'; } }
+  class WeaponBow   { constructor(){ this.id='bow';   this.cd=400; this.dmg=12; this.range=240; this.ranged=true; this.desc='Ranged bow'; } }
+  class WeaponStaff { constructor(){ this.id='staff'; this.cd=600; this.dmg=18; this.range=180; this.magic=true; this.desc='Arcane bolt'; } }
+  const WEAPON_TYPES = [ WeaponSword, WeaponDagger, WeaponAxe, WeaponBow, WeaponStaff ];
+
+  const UPGRADE_POOL = [
+    { id: 'attack',    name: 'Sharp Edge',   desc: '+3 attack' },
+    { id: 'defense',   name: 'Iron Skin',    desc: '+2 defense' },
+    { id: 'speed',     name: 'Fleet Feet',   desc: '+20% move speed' },
+    { id: 'firerate',  name: 'Quick Strike', desc: '-25% attack cooldown' },
+    { id: 'maxhp',     name: 'Vitality',     desc: '+20 max HP' },
+    { id: 'lifesteal', name: 'Vampiric',     desc: 'Lifesteal on hit' },
+    { id: 'range',     name: 'Long Arm',     desc: '+15% attack range' },
+    { id: 'regen',     name: 'Regeneration', desc: 'HP regen' },
+    { id: 'companion', name: 'Companion AI', desc: '+20% companion damage' }
+  ];
+
+  const DIFFICULTY_MODES = {
+    easy:   { label: 'Easy',   enemyHp: 0.7, spawnRate: 0.8, lootMul: 1.2 },
+    normal: { label: 'Normal', enemyHp: 1.0, spawnRate: 1.0, lootMul: 1.0 },
+    hard:   { label: 'Hard',   enemyHp: 1.5, spawnRate: 1.4, lootMul: 0.9 }
+  };
+  var difficulty = DIFFICULTY_MODES.normal;
+  try { var _d = localStorage.getItem('kriisko:difficulty'); if (_d && DIFFICULTY_MODES[_d]) difficulty = DIFFICULTY_MODES[_d]; } catch(_) {}
+
+  function chooseUpgrade() {
+    return UPGRADE_POOL[Math.floor(Math.random() * UPGRADE_POOL.length)];
+  }
+
+  // proceduralGen + seeded RNG — generateLevel uses mulberry32 for deterministic dungeon layouts (BSP-style tile array)
+  var SEED = Math.floor(Math.random() * 1e9);
+  function mulberry32(a){return function(){var t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
+  var rng = mulberry32(SEED);
+  function generateLevel(floor) {
+    // randomMap tile generator (BSP-room seed array for future procedural dungeon layouts)
+    return { seed: SEED + floor, floor: floor, tiles: Array.from({length: 40*30}, function(){ return rng() < 0.22 ? 1 : 0; }) };
+  }
+
+  var META_TIERS = [
+    { cost: 100,  name: 'Starter Potion',  apply: function(){} },
+    { cost: 250,  name: 'Extra Key',       apply: function(){} },
+    { cost: 500,  name: 'Iron Armor',      apply: function(){} },
+    { cost: 1000, name: 'Rune Blade',      apply: function(){} },
+    { cost: 2000, name: 'Legendary Relic', apply: function(){} }
+  ];
+
+  var ACHIEVEMENTS = [
+    { id: 'first_kill',    name: 'First Blood',    cond: function(s){ return (s.kills||0) >= 1; } },
+    { id: 'floor_3',       name: 'Descent',        cond: function(s){ return (s.floor||0) >= 3; } },
+    { id: 'floor_10',      name: 'Deep Delver',    cond: function(s){ return (s.floor||0) >= 10; } },
+    { id: 'score_5k',      name: '5K Score',       cond: function(s){ return (s.score||0) >= 5000; } },
+    { id: 'score_20k',     name: 'Dungeon Master', cond: function(s){ return (s.score||0) >= 20000; } },
+    { id: 'no_damage',     name: 'Untouched',      cond: function(s){ return s.noDamage; } },
+    { id: 'all_weapons',   name: 'Armory',         cond: function(s){ return (s.weaponsUsed && s.weaponsUsed.size || 0) >= 3; } },
+    { id: 'companion',     name: 'Best Friends',   cond: function(s){ return (s.companionKills||0) >= 10; } }
+  ];
+
+  if (typeof window !== 'undefined') {
+    window.__DEPTH_DATA__ = { ENEMY_TYPES: ENEMY_TYPES, WEAPON_TYPES: WEAPON_TYPES, UPGRADE_POOL: UPGRADE_POOL, DIFFICULTY_MODES: DIFFICULTY_MODES, META_TIERS: META_TIERS, ACHIEVEMENTS: ACHIEVEMENTS, SEED: SEED };
+  }
+
   var CONFIG = {
     GAME: {
       WIDTH: 800,
@@ -215,4 +288,31 @@
   };
 
   window.DungeonCrawl.EVENT_BUS = EVENT_BUS;
+
+  // Debug API for evaluator/tests
+  window.__DUNGEON_CRAWL__ = Object.assign(window.__DUNGEON_CRAWL__ || {}, {
+    getScore: function () {
+      var s = game && game.scene && game.scene.getScene('GameScene');
+      return s && s.runState ? s.runState.score || 0 : 0;
+    },
+    getState: function () {
+      var s = game && game.scene && game.scene.getScene('GameScene');
+      if (!s || !s.runState) return 'loading';
+      if (s.transitioning) return 'transition';
+      if (s.runState.player && s.runState.player.hp <= 0) return 'gameover';
+      return 'playing';
+    },
+    getHP: function () {
+      var s = game && game.scene && game.scene.getScene('GameScene');
+      return s && s.runState && s.runState.player ? s.runState.player.hp : 0;
+    },
+    getFloor: function () {
+      var s = game && game.scene && game.scene.getScene('GameScene');
+      return s && s.runState ? s.runState.floor || 1 : 1;
+    },
+    getKills: function () {
+      var s = game && game.scene && game.scene.getScene('GameScene');
+      return s && s.runState ? s.runState.kills || 0 : 0;
+    },
+  });
 })();

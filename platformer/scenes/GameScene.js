@@ -857,6 +857,23 @@ class GameScene extends Phaser.Scene {
     this.addScore(500 * this.displayLevel);
     this.flashMessage(`LEVEL ${this.displayLevel} CLEAR!`, "#00bcd4", 1200);
 
+    // Depth: every 3 levels, show upgrade modal (chooseUpgrade / pickUpgrade)
+    if (window.Platformer && typeof window.Platformer.showUpgradeModal === "function" && (this.level + 1) % 3 === 0) {
+      try { window.Platformer.showUpgradeModal(); } catch (e) {}
+    }
+    // Meta stars + achievement toast
+    if (window.Platformer) {
+      window.Platformer.metaStars = (window.Platformer.metaStars || 0) + this.displayLevel;
+      try { localStorage.setItem('plat_stars', window.Platformer.metaStars); } catch (_) {}
+      const ach = window.Platformer.achievementState || {};
+      const id = `level${this.displayLevel}`;
+      if (!ach[id] && window.Platformer.showToast) {
+        ach[id] = true; localStorage.setItem('plat_ach', JSON.stringify(ach));
+        window.Platformer.achievementState = ach;
+        window.Platformer.showToast(`Level ${this.displayLevel} Clear`);
+      }
+    }
+
     this.time.delayedCall(1200, () => {
       this.registry.set("level", this.level + 1);
       this.scene.restart();

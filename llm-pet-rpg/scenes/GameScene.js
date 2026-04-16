@@ -805,6 +805,9 @@
     if (!this.sceneAlive) {
       return;
     }
+    if (window.KM && window.KM.isPaused()) {
+      return;
+    }
 
     this.handlePlayerInput(time);
     this.updateEnemyAI(time);
@@ -851,6 +854,7 @@
 
   GameScene.prototype.playerAttack = function() {
     CONFIG.AudioService.swordSlash();
+    if (window.KJ) window.KJ.shoot();
 
     var arcX = this.player.x + this.facing.x * (CONFIG.PLAYER.ATTACK_RANGE * 0.6);
     var arcY = this.player.y + this.facing.y * (CONFIG.PLAYER.ATTACK_RANGE * 0.6);
@@ -923,6 +927,11 @@
       }
     });
     CONFIG.AudioService.enemyHit();
+    if (window.KJ) {
+      window.KJ.shake(5, 120);
+      window.KJ.flash('#ff6b6b', 50);
+      window.KJ.hit();
+    }
 
     if (hp <= 0) {
       this.killEnemy(enemy, fromPlayer);
@@ -942,6 +951,13 @@
     this.enemyDeathEmitter.setParticleTint(color);
     this.enemyDeathEmitter.explode(SCENE.ENEMY_DEATH_PARTICLES, x, y);
     CONFIG.AudioService.enemyDeath();
+    if (window.KJ) {
+      var sx = x - this.cameras.main.scrollX;
+      var sy = y - this.cameras.main.scrollY;
+      window.KJ.shake(8, 180);
+      window.KJ.particles(sx, sy, 16, '#ff6b6b');
+      window.KJ.hit();
+    }
 
     var orbXP = Math.max(1, Math.round(xpValue * CONFIG.PET.XP_FROM_KILL_FACTOR));
     var orb = this.xpOrbs.create(x, y, 'xp-orb');
@@ -958,6 +974,7 @@
 
     this.enemiesAlive = Math.max(0, this.enemiesAlive - 1);
     this.score += Math.max(0, Math.round(xpValue * CONFIG.SCORE.KILL_MULTIPLIER));
+    if (window.KM) window.KM.trackScore(this.score);
 
     enemy.disableBody(true, true);
 
@@ -995,6 +1012,11 @@
 
     this.playerHitEmitter.explode(SCENE.PLAYER_HIT_PARTICLES, this.player.x, this.player.y);
     CONFIG.AudioService.playerHit();
+    if (window.KJ) {
+      window.KJ.shake(10, 220);
+      window.KJ.flash('#ff0040', 100);
+      window.KJ.hit();
+    }
 
     this.tweens.killTweensOf(this.player);
     this.tweens.add({
@@ -1024,6 +1046,12 @@
     this.addPetXP(xp);
     CONFIG.AudioService.itemPickup();
     this.itemPickupEmitter.explode(6, orb.x, orb.y);
+    if (window.KJ) {
+      var ox = orb.x - this.cameras.main.scrollX;
+      var oy = orb.y - this.cameras.main.scrollY;
+      window.KJ.particles(ox, oy, 10, '#ffc107');
+      window.KJ.pickup();
+    }
     orb.disableBody(true, true);
   };
 
@@ -1872,6 +1900,10 @@
     } catch (e) { /* Phaser emitter init race */ }
 
     CONFIG.AudioService.levelUp();
+    if (window.KJ) {
+      window.KJ.levelUp();
+      window.KJ.flash('#4caf50', 120);
+    }
 
     this.tweens.add({
       targets: this.cameras.main,
@@ -2057,6 +2089,17 @@
     CONFIG.Helpers.saveHashParam(CONFIG.URL.PET_XP_KEY, this.petXP);
 
     CONFIG.EVENT_BUS.emit(CONFIG.EVENTS.GAME_OVER);
+    if (window.KJ) {
+      window.KJ.shake(12, 300);
+      window.KJ.flash('#ff0040', 160);
+      window.KJ.gameOver();
+    }
+    if (window.KM) {
+      window.KM.gameOver(this.score, {
+        cause: 'Fallen in the dungeon',
+        onRetry: function () { self.scene.start('TitleScene'); },
+      });
+    }
 
     this.cameras.main.once('camerafadeoutcomplete', function() {
       self.scene.start('GameOverScene', {

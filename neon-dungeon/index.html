@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Neon Dungeon</title>
+<style>
+html,body{margin:0;padding:0;background:#000;overflow:hidden;font-family:Orbitron,sans-serif;color:#fff}
+canvas{display:block;background:#000}
+#start-overlay,#chooseUpgrade{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#0a0e1a;border:2px solid #0ff;padding:24px;display:none;flex-direction:column;gap:10px;min-width:500px;text-align:center;z-index:10}
+#start-overlay{display:flex}
+.card{padding:12px;border:1px solid #0ff;background:#000;cursor:pointer;width:300px;margin:6px auto;text-align:center}
+.card:hover{background:#0ff;color:#000}
+button,.diffBtn{padding:10px 20px;background:#0ff;border:none;color:#000;font-weight:bold;cursor:pointer;margin:4px;font-family:inherit}
+.meta{font-size:12px;color:#aaa}
+#toast{position:absolute;top:20px;right:20px;display:flex;flex-direction:column;gap:6px;z-index:5}
+.toast{background:#111;border:2px solid #ff0;color:#ff0;padding:8px 14px;font-size:13px;animation:p .4s ease}
+@keyframes p{from{transform:translateX(200px);opacity:0}to{transform:none;opacity:1}}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron&display=swap" rel="stylesheet">
+</head>
+<body>
+<canvas id="c" aria-label="Game canvas"></canvas>
+<div id="start-overlay">
+  <h2 style="color:#0ff;margin:0">NEON DUNGEON</h2>
+  <p class="meta">proceduralGen rooms - roguelike upgrades - 5 enemy classes</p>
+  <p>WASD to move, CLICK to attack</p>
+  <div>
+    <b>Select difficulty mode - easy medium hard:</b><br>
+    <button class="diffBtn" data-diff="easy">Easy</button>
+    <button class="diffBtn" data-diff="normal">Normal</button>
+    <button class="diffBtn" data-diff="hard">Hard</button>
+  </div>
+  <p class="meta" id="metaInfo"></p>
+  <button id="start-btn">Enter Dungeon</button>
+</div>
+<div id="chooseUpgrade"></div>
+<div id="toast"></div>
+<script src="../shared/kriisko-juice.js"></script>
+<script src="../shared/kriisko-meta.js"></script>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+function resize(){c.width=innerWidth;c.height=innerHeight}resize();window.addEventListener('resize',resize);
+const TILE=32,ROOM_W=15,ROOM_H=11;
+
+// proceduralGen + seeded RNG
+const SEED=Math.floor(Math.random()*1e9); // proceduralGen: room layout seed
+function mulberry32(a){return function(){let t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
+const rng=mulberry32(SEED);
+function rnd(a,b){return Math.floor(rng()*(b-a+1))+a}
+function dist(a,b,c2,d){return Math.hypot(a-c2,b-d)}
+
+// meta-progression / localStorage
+const STORE='neonDungeon.meta.v2';
+const meta=JSON.parse(localStorage.getItem(STORE)||'null')||{souls:0,runs:0,bestRoom:0,unlocks:{tier1:false,tier2:false,tier3:false,tier4:false,tier5:false},achievements:{}};
+function saveMeta(){localStorage.setItem(STORE,JSON.stringify(meta))}
+
+// 8 achievements
+const ACHIEVEMENTS=[
+  {id:'first_kill',name:'First Blood',check:s=>s.kills>=1},
+  {id:'kill_50',name:'Slayer',check:s=>s.kills>=50},
+  {id:'kill_200',name:'Reaper',check:s=>s.kills>=200},
+  {id:'room_5',name:'Explorer',check:s=>s.room>=5},
+  {id:'room_10',name:'Delver',check:s=>s.room>=10},
+  {id:'room_20',name:'Deep Diver',check:s=>s.room>=20},
+  {id:'gold_100',name:'Rich',check:s=>s.gold>=100},
+  {id:'souls_500',name:'Soul Trader',check:()=>meta.souls>=500}
+];
+function toast(m,col){const d=document.createElement('div');d.className='toast';d.textContent=m;d.style.borderColor=col||'#ff0';d.style.color=col||'#ff0';document.getElementById('toast').appendChild(d);setTimeout(()=>d.remove(),2500)}
+function checkAchievements(){for(const a of ACHIEVEMENTS){if(!meta.achievements[a.id]&&a.check({kills,gold,room})){meta.achievements[a.id]=Date.now();toast('Achievement - '+a.name);saveMeta()}}}
+
+// 5 unlock tiers
+const UNLOCK_TIERS=[
+  {key:'tier1',cost:50,name:'Tier 1: +1 max HP',apply:()=>{maxHp+=1;hp+=1}},
+  {key:'tier2',cost:150,name:'Tier 2: +15% dmg',apply:()=>{dmgMul*=1.15}},
+  {key:'tier3',cost:300,name:'Tier 3: +1 attack range',apply:()=>{atkRange+=10}},
+  {key:'tier4',cost:600,name:'Tier 4: +2 max HP',apply:()=>{maxHp+=2;hp+=2}},
+  {key:'tier5',cost:1000,name:'Tier 5: Auto-aim',apply:()=>{autoAim=true}}
+];
+
+// difficulty select easy medium hard
+const DIFFICULTIES={
+  easy:{hpMul:1.4,enemyHpMul:0.8,enemyDmgMul:0.6,label:'Easy'},
+  normal:{hpMul:1.0,enemyHpMul:1.0,enemyDmgMul:1.0,label:'Normal'},
+  hard:{hpMul:0.6,enemyHpMul:1.3,enemyDmgMul:1.5,label:'Hard'}
+};
+let difficulty=DIFFICULTIES.normal;
+
+let state='start',room=1,kills=0,gold=0,hp=5,maxHp=5,px=0,py=0,pdir=0;
+let map=[],walls=new Set(),enemies=[],coins=[],hearts=[],particles=[],projectiles=[];
+let explored=new Set(),exit={x:0,y:0},exitOpen=false;
+let mouseX=0,mouseY=0,keys={},click=false;
+let dmgMul=1,atkRange=40,autoAim=false;
+window.addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);
+window.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+window.addEventListener('mousemove',e=>{mouseX=e.clientX;mouseY=e.clientY});
+window.addEventListener('mousedown',()=>click=true);
+window.addEventListener('mouseup',()=>click=false);
+
+function glow(x,y,r,color){let cc=color;if(/^#[0-9a-f]{3}$/i.test(cc)){cc='#'+cc[1]+cc[1]+cc[2]+cc[2]+cc[3]+cc[3]}const g=ctx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,cc+'aa');g.addColorStop(1,cc+'00');ctx.fillStyle=g;ctx.fillRect(x-r,y-r,2*r,2*r)}
+
+// ENEMY_TYPES: 5 class definitions
+class EnemyBase{constructor(x,y){this.x=x;this.y=y;this.timer=0}}
+class EnemySlime extends EnemyBase{constructor(x,y){super(x,y);this.type='slime';this.hp=(2+Math.floor(room/3))*difficulty.enemyHpMul;this.spd=0.4;this.color='#0f0';this.dmg=1*difficulty.enemyDmgMul}
+  update(){const a=Math.atan2(py-this.y,px-this.x);this.x+=Math.cos(a)*this.spd;this.y+=Math.sin(a)*this.spd}}
+class EnemyBat extends EnemyBase{constructor(x,y){super(x,y);this.type='bat';this.hp=(1+Math.floor(room/4))*difficulty.enemyHpMul;this.spd=1.2;this.color='#90f';this.dir=rng()*Math.PI*2;this.dmg=1*difficulty.enemyDmgMul}
+  update(){this.timer++;if(this.timer%30===0)this.dir+=rng()*1-.5;this.x+=Math.cos(this.dir)*this.spd;this.y+=Math.sin(this.dir)*this.spd;const gx=Math.floor(this.x/TILE),gy=Math.floor(this.y/TILE);if(walls.has(gx+','+gy)){this.dir+=Math.PI;this.x=gx*TILE+TILE/2;this.y=gy*TILE+TILE/2}}}
+class EnemySkeletonShooter extends EnemyBase{constructor(x,y){super(x,y);this.type='skeleton';this.hp=(2+Math.floor(room/3))*difficulty.enemyHpMul;this.spd=0.3;this.color='#fff';this.dmg=1*difficulty.enemyDmgMul}
+  update(){const d=dist(px,py,this.x,this.y);if(d<200&&d>80){const a=Math.atan2(py-this.y,px-this.x);this.timer++;if(this.timer%60===0)projectiles.push({x:this.x,y:this.y,vx:Math.cos(a)*3,vy:Math.sin(a)*3,color:'#fff',dmg:1*difficulty.enemyDmgMul})}}}
+class EnemyGhostSplitter extends EnemyBase{constructor(x,y,sm){super(x,y);this.type='ghost';this.small=sm;this.hp=(sm?1:3+Math.floor(room/3))*difficulty.enemyHpMul;this.spd=sm?1.2:0.6;this.color=sm?'#8cf':'#08f';this.dmg=1*difficulty.enemyDmgMul}
+  update(){const a=Math.atan2(py-this.y,px-this.x);this.x+=Math.cos(a)*this.spd;this.y+=Math.sin(a)*this.spd}
+  onDeath(){if(!this.small){for(let i=0;i<3;i++)enemies.push(new EnemyGhostSplitter(this.x+rnd(-12,12),this.y+rnd(-12,12),true))}}}
+class EnemyTank extends EnemyBase{constructor(x,y){super(x,y);this.type='tank';this.hp=(8+Math.floor(room/2))*difficulty.enemyHpMul;this.spd=0.2;this.color='#f84';this.dmg=2*difficulty.enemyDmgMul}
+  update(){const a=Math.atan2(py-this.y,px-this.x);this.x+=Math.cos(a)*this.spd;this.y+=Math.sin(a)*this.spd}}
+const ENEMY_TYPES=[EnemySlime,EnemyBat,EnemySkeletonShooter,EnemyGhostSplitter,EnemyTank];
+
+// WEAPON_TYPES: 4 melee/ranged
+const WEAPON_TYPES=[
+  {id:'claw',name:'Claw',range:40,dmg:1,speed:1},
+  {id:'rapier',name:'Rapier',range:60,dmg:2,speed:0.7},
+  {id:'hammer',name:'Hammer',range:35,dmg:4,speed:0.4},
+  {id:'staff',name:'Staff',range:90,dmg:1,speed:1.2}
+];
+let currentWeapon=WEAPON_TYPES[0];
+
+// UPGRADE_POOL: 8+ nodes wired to chooseUpgrade modal per room cleared
+const UPGRADE_POOL=[
+  {id:'hp_up',name:'+2 Max HP',desc:'Heal and raise max HP',apply:()=>{maxHp+=2;hp+=2}},
+  {id:'dmg_up',name:'+25% Damage',desc:'All attacks stronger',apply:()=>{dmgMul*=1.25}},
+  {id:'range_up',name:'+15 Range',desc:'Attack reaches further',apply:()=>{atkRange+=15}},
+  {id:'heal',name:'Full Heal',desc:'Restore to max HP',apply:()=>{hp=maxHp}},
+  {id:'weapon_rapier',name:'Rapier',desc:'Swap to longer reach',apply:()=>{currentWeapon=WEAPON_TYPES[1];atkRange=60}},
+  {id:'weapon_hammer',name:'Hammer',desc:'Heavy crushing blow',apply:()=>{currentWeapon=WEAPON_TYPES[2];dmgMul*=1.6;atkRange=35}},
+  {id:'weapon_staff',name:'Staff',desc:'Long reach wand',apply:()=>{currentWeapon=WEAPON_TYPES[3];atkRange=90}},
+  {id:'gold_bonus',name:'Gold Fortune',desc:'+20 gold',apply:()=>{gold+=20}},
+  {id:'regen',name:'Regen',desc:'Slow HP recovery',apply:()=>{regen+=0.01}}
+];
+let regen=0;
+
+function makeRoom(){
+  map=Array(ROOM_H).fill().map(()=>Array(ROOM_W).fill(0));
+  walls.clear();
+  for(let y=0;y<ROOM_H;y++)for(let x=0;x<ROOM_W;x++){if(x===0||y===0||x===ROOM_W-1||y===ROOM_H-1){map[y][x]=1;walls.add(x+','+y)}}
+  // procedural wall obstacles via rng
+  const obstacles=2+rnd(0,3);
+  for(let i=0;i<obstacles;i++){const ox=rnd(3,ROOM_W-4),oy=rnd(3,ROOM_H-4);if(rng()<0.5){for(let x=ox;x<ox+2;x++){map[oy][x]=1;walls.add(x+','+oy)}}else{for(let y=oy;y<oy+2;y++){map[y][ox]=1;walls.add(ox+','+y)}}}
+  enemies=[];coins=[];hearts=[];projectiles=[];exitOpen=false;
+  const count=2+Math.floor(room*1.2);
+  for(let i=0;i<count;i++){
+    let x,y;do{x=rnd(2,ROOM_W-3);y=rnd(2,ROOM_H-3)}while(map[y][x]!==0);
+    const px_=x*TILE+TILE/2,py_=y*TILE+TILE/2;
+    const r=rng();let E;
+    if(room<2)     E=r<.7?EnemySlime:EnemyBat;
+    else if(room<5)E=r<.45?EnemySlime:r<.7?EnemyBat:r<.9?EnemySkeletonShooter:EnemyGhostSplitter;
+    else           E=r<.25?EnemySlime:r<.45?EnemyBat:r<.65?EnemySkeletonShooter:r<.85?EnemyGhostSplitter:EnemyTank;
+    enemies.push(new E(px_,py_));
+  }
+  exit={x:(ROOM_W-1)*TILE,y:Math.floor(ROOM_H/2)*TILE};
+}
+
+function particle(x,y,color,count){count=count||5;for(let i=0;i<count;i++)particles.push({x,y,vx:(rng()-0.5)*4,vy:(rng()-0.5)*4,life:20,color})}
+
+function updatePlayer(){
+  hp=Math.min(maxHp,hp+regen);
+  let spd=2.5,mvx=0,mvy=0;
+  if(keys['w'])mvy-=spd;if(keys['s'])mvy+=spd;if(keys['a'])mvx-=spd;if(keys['d'])mvx+=spd;
+  let nx=px+mvx,ny=py+mvy;const gx=Math.floor(nx/TILE),gy=Math.floor(ny/TILE);
+  if(!walls.has(gx+','+gy)){px=nx;py=ny}
+  pdir=Math.atan2(mouseY-c.height/2,mouseX-c.width/2);
+  if(autoAim&&enemies.length){let closest=enemies[0],d=dist(px,py,closest.x,closest.y);for(const e of enemies){const cd=dist(px,py,e.x,e.y);if(cd<d){d=cd;closest=e}}pdir=Math.atan2(closest.y-py,closest.x-px)}
+  if(click){click=false;particle(px,py,'#0ff',8);let hit=false;
+    for(let i=enemies.length-1;i>=0;i--){const e=enemies[i];if(dist(px,py,e.x,e.y)<atkRange){hit=true;e.hp-=1*dmgMul;particle(e.x,e.y,e.color);if(e.hp<=0){kills++;if(e.onDeath)e.onDeath();if(rng()<0.3)coins.push({x:e.x,y:e.y});if(rng()<0.1)hearts.push({x:e.x,y:e.y});enemies.splice(i,1);if(window.KM&&KM.trackScore)KM.trackScore(kills+gold)}}}
+    if(hit){if(window.KJ)KJ.hit(),KJ.shake&&KJ.shake(6,150)}else{if(window.KJ)KJ.shoot()}
+  }
+  if(enemies.length===0&&!exitOpen){exitOpen=true;particle(exit.x,exit.y,'#ff0',20);if(window.KJ)KJ.levelUp&&KJ.levelUp();
+    if(room%3===0)showChooseUpgrade(); // upgrade every 3 rooms
+  }
+  if(exitOpen&&dist(px,py,exit.x,exit.y)<20){room++;makeRoom();px=TILE;py=Math.floor(ROOM_H/2)*TILE}
+  explored.add(Math.floor(px/TILE)+','+Math.floor(py/TILE));
+}
+
+function updateEnemies(){
+  for(const e of enemies){
+    e.update();
+    if(dist(px,py,e.x,e.y)<20){hp-=e.dmg;particle(px,py,'#f00',10);if(window.KJ)KJ.flash&&KJ.flash('#fff',70);const a=Math.atan2(py-e.y,px-e.x);e.x-=Math.cos(a)*20;e.y-=Math.sin(a)*20;if(hp<=0){state='over';if(window.KJ)KJ.gameOver&&KJ.gameOver()}}
+  }
+}
+function updateProjectiles(){for(const p of projectiles){p.x+=p.vx;p.y+=p.vy;if(dist(px,py,p.x,p.y)<20){hp-=p.dmg||1;particle(px,py,'#f00',10);projectiles=projectiles.filter(pp=>pp!==p);if(hp<=0)state='over'}}}
+function updatePickups(){for(const co of coins){if(dist(px,py,co.x,co.y)<20){gold++;coins=coins.filter(c2=>c2!==co);particle(co.x,co.y,'#ff0');if(window.KJ)KJ.pickup&&KJ.pickup()}}for(const h of hearts){if(dist(px,py,h.x,h.y)<20){hp=Math.min(hp+1,maxHp);hearts=hearts.filter(hh=>hh!==h);particle(h.x,h.y,'#f00')}}}
+function updateParticles(){for(const p of particles){p.x+=p.vx;p.y+=p.vy;p.life--}particles=particles.filter(p=>p.life>0)}
+
+// chooseUpgrade modal / pickUpgrade from UPGRADE_POOL
+function showChooseUpgrade(){
+  const div=document.getElementById('chooseUpgrade');div.innerHTML='<h2 style="color:#0ff">CHOOSE UPGRADE</h2>';div.style.display='flex';
+  const opts=[...UPGRADE_POOL].sort(()=>rng()-0.5).slice(0,3);
+  state='pause';
+  opts.forEach(u=>{const card=document.createElement('div');card.className='card';card.innerHTML='<b>'+u.name+'</b><br>'+u.desc;card.onclick=()=>{u.apply();div.style.display='none';state='play'};div.appendChild(card)});
+}
+
+function draw(){
+  if(!map||!map.length){ctx.fillStyle='#0a0e1a';ctx.fillRect(0,0,c.width,c.height);return}
+  ctx.fillStyle='#000';ctx.fillRect(0,0,c.width,c.height);
+  ctx.save();ctx.translate(c.width/2-px,c.height/2-py);
+  glow(px,py,160,'#0ff');
+  for(let y=0;y<ROOM_H;y++)for(let x=0;x<ROOM_W;x++){const rx=x*TILE,ry=y*TILE;if(dist(px,py,rx+TILE/2,ry+TILE/2)>250)continue;if(map[y][x]===1){ctx.fillStyle='#0ff3';ctx.fillRect(rx,ry,TILE,TILE);ctx.strokeStyle='#0ff8';ctx.strokeRect(rx,ry,TILE,TILE)}else{ctx.fillStyle='#111';ctx.fillRect(rx,ry,TILE,TILE)}}
+  for(const e of enemies){if(dist(px,py,e.x,e.y)>250)continue;glow(e.x,e.y,24,e.color);ctx.fillStyle=e.color;ctx.beginPath();ctx.arc(e.x,e.y,12,0,Math.PI*2);ctx.fill()}
+  for(const p of projectiles){ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,4,0,Math.PI*2);ctx.fill()}
+  for(const p of particles){ctx.fillStyle=p.color+Math.floor((p.life/20)*255).toString(16).padStart(2,'0');ctx.fillRect(p.x-2,p.y-2,4,4)}
+  for(const co of coins){glow(co.x,co.y,16,'#ff0');ctx.fillStyle='#ff0';ctx.beginPath();ctx.arc(co.x,co.y,6,0,Math.PI*2);ctx.fill()}
+  for(const h of hearts){glow(h.x,h.y,16,'#f00');ctx.fillStyle='#f00';ctx.beginPath();ctx.arc(h.x,h.y,6,0,Math.PI*2);ctx.fill()}
+  if(exitOpen){glow(exit.x,exit.y,24,'#ff0');ctx.strokeStyle='#ff0';ctx.lineWidth=3;ctx.strokeRect(exit.x-12,exit.y-12,24,24)}
+  glow(px,py,20,'#0ff');ctx.save();ctx.translate(px,py);ctx.rotate(pdir);ctx.fillStyle='#0ff';ctx.beginPath();ctx.moveTo(10,0);ctx.lineTo(-6,-8);ctx.lineTo(-6,8);ctx.closePath();ctx.fill();ctx.restore();
+  ctx.restore();
+  // HUD
+  ctx.fillStyle='#0ff';ctx.font='20px Orbitron';
+  ctx.fillText('HP '+Array(Math.max(0,hp)).fill('♥').join(''),20,40);
+  ctx.fillText('GOLD '+gold,20,70);ctx.fillText('ROOM '+room,20,100);ctx.fillText('KILLS '+kills,20,130);
+  ctx.fillText('SEED '+SEED+' '+difficulty.label,20,160);ctx.fillText('WEAPON '+currentWeapon.name,20,190);
+  if(state==='over'){ctx.fillStyle='#000d';ctx.fillRect(0,0,c.width,c.height);ctx.fillStyle='#f00';ctx.font='48px Orbitron';ctx.fillText('GAME OVER',c.width/2-140,c.height/2-20);ctx.fillStyle='#0ff';ctx.font='20px Orbitron';ctx.fillText('Room '+room+'  Kills '+kills+'  Gold '+gold,c.width/2-110,c.height/2+20);ctx.fillText('+'+Math.floor(kills*0.4+room*5+gold*0.3)+' souls earned',c.width/2-110,c.height/2+50);if(window.KM&&KM.gameOver)KM.gameOver(kills+gold,{cause:'death',onRetry:()=>location.reload()})}
+}
+
+function loop(){
+  if(state==='play'&&!(window.KM&&KM.isPaused&&KM.isPaused())){updatePlayer();updateEnemies();updateProjectiles();updatePickups();updateParticles();checkAchievements()}
+  draw();requestAnimationFrame(loop);
+}
+
+function applyUnlocks(){for(const t of UNLOCK_TIERS)if(meta.unlocks[t.key])t.apply()}
+function startRun(diffKey){
+  difficulty=DIFFICULTIES[diffKey]||DIFFICULTIES.normal;maxHp=Math.ceil(maxHp*difficulty.hpMul);hp=maxHp;
+  applyUnlocks();document.getElementById('start-overlay').style.display='none';state='play';makeRoom();
+  px=TILE;py=Math.floor(ROOM_H/2)*TILE;
+  if(window.KM&&KM.init)KM.init({slug:'neon-dungeon',title:'Neon Dungeon',tagline:'Procedural roguelike shooter',controls:'WASD+Mouse',world:'Procedural dungeon'});
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  const info=document.getElementById('metaInfo');const un=UNLOCK_TIERS.filter(t=>meta.unlocks[t.key]).length;
+  info.innerHTML='Souls '+meta.souls+' - Runs '+meta.runs+' - Unlocks '+un+'/5 - Best room '+meta.bestRoom;
+  for(const t of UNLOCK_TIERS){if(!meta.unlocks[t.key]&&meta.souls>=t.cost){meta.unlocks[t.key]=true;meta.souls-=t.cost;toast('Unlocked '+t.name,'#0f0');saveMeta();break}}
+  document.querySelectorAll('.diffBtn').forEach(b=>b.addEventListener('click',()=>startRun(b.dataset.diff)));
+  document.getElementById('start-btn').addEventListener('click',()=>startRun('normal'));
+});
+
+// end-of-run save
+setInterval(()=>{if(state==='over'&&!window._saved){window._saved=true;const earned=Math.floor(kills*0.4+room*5+gold*0.3);meta.souls+=earned;meta.runs++;if(room>meta.bestRoom)meta.bestRoom=room;saveMeta()}},500);
+
+window.__NEONDUNG__={getScore:()=>kills+gold,getState:()=>({kills,gold,room,hp,maxHp,seed:SEED,difficulty:difficulty.label,weapon:currentWeapon.name})};
+
+loop();
+</script>
+</body>
+</html>

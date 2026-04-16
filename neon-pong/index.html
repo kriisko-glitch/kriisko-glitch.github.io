@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neon Pong Plus</title>
+<style>
+html,body{margin:0;padding:0;background:#000;overflow:hidden;font-family:'Orbitron',sans-serif;color:#0ff}
+canvas{display:block}
+#chip-row{position:absolute;top:10px;right:14px;display:flex;gap:6px;font-size:14px;z-index:5}
+.chip{padding:4px 10px;border-radius:12px;background:rgba(0,255,255,0.08);border:1px solid rgba(0,255,255,0.4);color:#0ff;text-shadow:0 0 4px #0ff}
+.chip.gold{color:#ffd54f;border-color:rgba(255,213,79,0.5);text-shadow:0 0 4px #ffd54f}
+.chip.rose{color:#ff4081;border-color:rgba(255,64,129,0.5);text-shadow:0 0 4px #ff4081}
+.overlay{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.88);z-index:20;padding:1rem;color:#0ff}
+.overlay.visible{display:flex}
+.overlay h2{color:#ffd54f;margin:0 0 0.5rem;font-size:2rem;text-shadow:0 0 16px #ffd54f}
+.overlay p{margin:0 0 1rem;opacity:0.85;text-align:center;font-size:0.9rem}
+.diff-row{display:flex;gap:8px;margin-bottom:1rem}
+.diff-btn{padding:0.5rem 1rem;cursor:pointer;background:transparent;border:2px solid #0ff;color:#0ff;border-radius:6px;font-family:inherit;font-size:0.9rem}
+.diff-btn.active{background:#0ff;color:#000}
+.go-btn{padding:0.6rem 1.4rem;cursor:pointer;background:#0ff;color:#000;border:none;border-radius:6px;font-weight:bold;font-family:inherit;font-size:1rem}
+.upgrade-card{background:rgba(0,64,128,0.3);border:2px solid #0ff;border-radius:8px;padding:0.6rem 0.9rem;margin:4px 0;cursor:pointer;min-width:240px;text-align:left;color:#eee;font-family:inherit}
+.upgrade-card:hover{background:rgba(0,128,255,0.4)}
+.upgrade-card .uname{font-size:1rem;color:#ffd54f;display:block;margin-bottom:3px;text-shadow:0 0 6px #ffd54f}
+.upgrade-card .udesc{font-size:0.72rem;color:#aef;opacity:0.9}
+.ach-toast{position:fixed;top:18px;left:18px;background:linear-gradient(135deg,#003040,#00ffff);padding:10px 14px;border-radius:8px;color:#000;font-family:'Orbitron',sans-serif;font-size:0.9rem;font-weight:bold;box-shadow:0 0 20px rgba(0,255,255,0.6);z-index:100;pointer-events:none;animation:pongSlide 2.5s ease-out forwards}
+@keyframes pongSlide{0%{transform:translateX(-120%);opacity:0}12%{transform:translateX(0);opacity:1}85%{transform:translateX(0);opacity:1}100%{transform:translateX(-120%);opacity:0}}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron&display=swap" rel="stylesheet">
+</head>
+<body>
+<canvas id="c" aria-label="Game canvas"></canvas>
+<div id="chip-row">
+  <span class="chip gold" id="coin-chip">&#9733; 0</span>
+  <span class="chip" id="best-chip">Best 0</span>
+  <span class="chip rose" id="diff-chip">Normal</span>
+</div>
+<div id="start-modal" class="overlay visible">
+  <h2>NEON PONG PLUS</h2>
+  <p>W/S or mouse to move.<br>First to 11. Upgrades every 3 points you score.</p>
+  <div class="diff-row" id="diff-row">
+    <button class="diff-btn" data-diff="easy">Easy</button>
+    <button class="diff-btn active" data-diff="normal">Normal</button>
+    <button class="diff-btn" data-diff="hard">Hard</button>
+  </div>
+  <button class="go-btn" id="start-btn">Start</button>
+</div>
+<div id="upgrade-modal" class="overlay">
+  <h2>Level Up!</h2>
+  <p>Pick one upgrade</p>
+  <div id="upgrade-choices"></div>
+</div>
+<script src="../shared/kriisko-juice.js"></script>
+<script src="../shared/kriisko-meta.js"></script>
+<script>
+const SLUG='neon-pong';
+const c=document.getElementById('c');
+const ctx=c.getContext('2d');
+function resize(){c.width=innerWidth;c.height=innerHeight;}
+resize();addEventListener('resize',resize);
+
+// META
+function lget(k,d){try{const v=localStorage.getItem('kriisko:'+SLUG+':'+k);return v===null?d:v;}catch(_){return d;}}
+function lset(k,v){try{localStorage.setItem('kriisko:'+SLUG+':'+k,String(v));}catch(_){}}
+function getCoins(){return parseInt(lget('coins','0'),10)||0;}
+function addCoins(n){lset('coins',getCoins()+n);}
+function getBest(){return parseInt(lget('best','0'),10)||0;}
+function setBest(n){if(n>getBest())lset('best',n);}
+function getUnlocked(){try{return JSON.parse(lget('ach','[]'));}catch(_){return[];}}
+function unlock(id,name){
+    const arr=getUnlocked();
+    if(arr.includes(id))return false;
+    arr.push(id);lset('ach',JSON.stringify(arr));
+    const el=document.createElement('div');el.className='ach-toast';el.textContent='Achievement: '+name;
+    document.body.appendChild(el);setTimeout(()=>el.remove(),2600);return true;
+}
+
+// DIFFICULTY
+const DIFFICULTIES={
+    easy:   {aiSpeed:4, aiDelay:20, ballSpeed:5, aiPaddleH:140, name:'Easy'},
+    normal: {aiSpeed:6, aiDelay:10, ballSpeed:6, aiPaddleH:120, name:'Normal'},
+    hard:   {aiSpeed:9, aiDelay:5,  ballSpeed:7.5, aiPaddleH:100, name:'Hard'}
+};
+let selectedMode=lget('difficulty','normal');
+
+// ENEMY BALL TYPES
+class EnemyBall {
+    constructor(x,y,vx,vy){this.x=x;this.y=y;this.vx=vx;this.vy=vy;this.type='normal';this.color='#fff';this.size=12;}
+}
+class EnemyHeavyBall extends EnemyBall {
+    constructor(x,y,vx,vy){super(x,y,vx*0.85,vy);this.type='heavy';this.color='#ffeb3b';this.size=16;}
+}
+class EnemyCurveBall extends EnemyBall {
+    constructor(x,y,vx,vy){super(x,y,vx,vy);this.type='curve';this.color='#ff00ff';this.curve=0.25;this.size=10;}
+}
+const ENEMY_TYPES=[
+    {name:'normal',ctor:EnemyBall,afterScore:0, weight:0.6},
+    {name:'heavy', ctor:EnemyHeavyBall,afterScore:3,weight:0.25},
+    {name:'curve', ctor:EnemyCurveBall,afterScore:5,weight:0.15}
+];
+
+// UPGRADE POOL
+const UPGRADE_POOL=[
+    {id:'spinControl', name:'Spin Control', desc:'+0.3 paddle spin multiplier'},
+    {id:'paddleSize',  name:'Bigger Paddle',desc:'+25% paddle height (permanent)'},
+    {id:'predNerf',    name:'AI Nerf',      desc:'AI reaction -30% this run'},
+    {id:'trailBoost',  name:'Ball Trail',   desc:'+40% ball base speed (you earn)'},
+    {id:'multiServe',  name:'Multi Serve',  desc:'Next score spawns 2 balls'},
+    {id:'shieldZone',  name:'Shield Zone',  desc:'60s shield: ball bounces off your goal line'},
+    {id:'scoreBoost',  name:'Score Boost',  desc:'+1 coin per point scored'}
+];
+
+// ACHIEVEMENTS
+const ACHIEVEMENTS=[
+    {id:'first_point', name:'First Point',    test:s=>s.playerScore>=1},
+    {id:'win_game',    name:'First Win',      test:s=>s.gameOver&&s.won},
+    {id:'streak_3',    name:'Triple Streak',  test:s=>s.streak>=3},
+    {id:'hard_win',    name:'Hard Mode Hero', test:s=>s.gameOver&&s.won&&s.mode==='hard'},
+    {id:'no_upgrades', name:'Purist Win',     test:s=>s.gameOver&&s.won&&s.upgradesChosen===0},
+    {id:'shutout',     name:'Shutout',        test:s=>s.gameOver&&s.won&&s.aiScore===0},
+    {id:'coin_50',     name:'Coin Collector', test:s=>s.totalCoins>=50},
+    {id:'all_types',   name:'Variety Play',   test:s=>s.seenBallTypes>=3}
+];
+
+// UI
+const startModal=document.getElementById('start-modal');
+const upgradeModal=document.getElementById('upgrade-modal');
+const upgradeChoicesEl=document.getElementById('upgrade-choices');
+const diffRow=document.getElementById('diff-row');
+const startBtn=document.getElementById('start-btn');
+const coinChipEl=document.getElementById('coin-chip');
+const bestChipEl=document.getElementById('best-chip');
+const diffChipEl=document.getElementById('diff-chip');
+function updateChips(){
+    coinChipEl.innerHTML='&#9733; '+getCoins();
+    bestChipEl.textContent='Best '+getBest();
+    diffChipEl.textContent=DIFFICULTIES[selectedMode].name;
+}
+
+const keys={};
+addEventListener('keydown',e=>keys[e.key]=true);
+addEventListener('keyup',e=>keys[e.key]=false);
+let mouseY=c.height/2;
+addEventListener('mousemove',e=>mouseY=e.clientY);
+
+const neon=(color,glow=20)=>{
+    ctx.shadowColor=color;ctx.shadowBlur=glow;
+    ctx.fillStyle=color;ctx.strokeStyle=color;
+};
+
+const particles=[];
+class Particle{
+    constructor(x,y,vx,vy,color){this.x=x;this.y=y;this.vx=vx;this.vy=vy;this.color=color;this.life=1;particles.push(this);}
+    update(){this.x+=this.vx;this.y+=this.vy;this.vx*=0.98;this.vy*=0.98;this.life-=0.02;if(this.life<=0)particles.splice(particles.indexOf(this),1);}
+    draw(){neon(this.color,this.life*20);ctx.fillRect(this.x,this.y,3,3);}
+}
+function explode(x,y,color,count=30){
+    for(let i=0;i<count;i++){
+        const a=Math.random()*Math.PI*2;const s=2+Math.random()*4;
+        new Particle(x,y,Math.cos(a)*s,Math.sin(a)*s,color);
+    }
+}
+
+const paddleW=20;
+let paddleH=120;
+let playerPaddleBonus=1.0;
+let playerY=c.height/2-paddleH/2, aiY=c.height/2-paddleH/2;
+let playerScore=0,aiScore=0;
+let streak=parseInt(lget('streak','0'),10)||0;
+let state='menu';
+let powerUps=[];
+let activeEffects={multi:0,big:0,speed:0,curve:0,shield:0};
+let balls=[];
+let trail=[];
+// depth state
+let upgrades=[];
+let upgradesChosen=0;
+let nextUpgradeAt=3;
+let spinMult=0.2;
+let baseSpeedBonus=0;
+let aiNerfMult=1.0;
+let multiServeNext=false;
+let shieldTicks=0;
+let coinPerScore=1;
+let runCoins=0;
+let seenBallTypes=new Set();
+let paused=false;
+
+function pickBallCtor(){
+    const candidates=ENEMY_TYPES.filter(t=>Math.max(playerScore,aiScore)>=t.afterScore);
+    const total=candidates.reduce((s,t)=>s+t.weight,0);
+    let r=Math.random()*total;
+    for(const t of candidates){r-=t.weight;if(r<=0)return t;}
+    return candidates[0];
+}
+
+function resetBall(){
+    const angle=(Math.random()-0.5)*0.5;
+    const cfg=DIFFICULTIES[selectedMode];
+    const speed=(cfg.ballSpeed)+baseSpeedBonus;
+    const vx=(Math.random()>0.5?1:-1)*speed;
+    const vy=Math.sin(angle)*speed;
+    const spawnList=[{x:c.width/2,y:c.height/2,vx,vy}];
+    if(multiServeNext){
+        spawnList.push({x:c.width/2,y:c.height/2,vx:-vx,vy:-vy});
+        multiServeNext=false;
+    }
+    balls=spawnList.map(b=>{
+        const t=pickBallCtor();
+        seenBallTypes.add(t.name);
+        return new t.ctor(b.x,b.y,b.vx,b.vy);
+    });
+    trail=[];
+}
+
+function spawnPowerUp(){
+    if(Math.random()<0.005){
+        const types=['multi','big','speed','curve','shield'];
+        const type=types[Math.floor(Math.random()*types.length)];
+        powerUps.push({
+            x:c.width/2+(Math.random()-0.5)*c.width*0.5,
+            y:Math.random()*(c.height-40)+20,
+            type, color:'#0f0', vy:2
+        });
+    }
+}
+
+function updatePowerUps(){
+    spawnPowerUp();
+    for(let i=powerUps.length-1;i>=0;i--){
+        const p=powerUps[i];
+        p.y+=p.vy;
+        if(p.y>c.height-20||p.y<20)p.vy*=-1;
+        const b0=balls[0];if(!b0)continue;
+        if(Math.abs(p.x-b0.x)<30&&Math.abs(p.y-b0.y)<30){
+            activeEffects[p.type]=300;
+            if(p.type==='multi'){
+                const tBall=pickBallCtor();
+                balls.push(new tBall.ctor(b0.x,b0.y,-b0.vx*0.8,b0.vy+Math.random()*4-2));
+                balls.push(new tBall.ctor(b0.x,b0.y,b0.vx*0.8,b0.vy+Math.random()*4-2));
+            }
+            explode(p.x,p.y,p.color);
+            powerUps.splice(i,1);
+        }
+        if(p.y<0||p.y>c.height)powerUps.splice(i,1);
+    }
+}
+
+function updatePlayer(){
+    const speed=12;
+    if(keys['w']||keys['W'])playerY-=speed;
+    if(keys['s']||keys['S'])playerY+=speed;
+    if(Math.abs(mouseY-playerY-getPlayerH()/2)>5)playerY+=(mouseY-playerY-getPlayerH()/2)*0.1;
+    const h=getPlayerH();
+    playerY=Math.max(0,Math.min(c.height-h,playerY));
+}
+
+function getPlayerH(){
+    return Math.round((activeEffects.big?200:paddleH)*playerPaddleBonus);
+}
+function getAIH(){
+    return Math.round(DIFFICULTIES[selectedMode].aiPaddleH);
+}
+
+function updateAI(){
+    const cfg=DIFFICULTIES[selectedMode];
+    const delay=cfg.aiDelay/Math.max(0.5,aiNerfMult);
+    const target=balls.length>0?balls[0].y:c.height/2;
+    const diff=target-(aiY+getAIH()/2);
+    const spd=cfg.aiSpeed*aiNerfMult;
+    aiY+=Math.sign(diff)*Math.min(Math.abs(diff)/delay,spd);
+    aiY=Math.max(0,Math.min(c.height-getAIH(),aiY));
+}
+
+function updateBalls(){
+    const baseCurve=activeEffects.curve?0.3:0;
+    for(let i=balls.length-1;i>=0;i--){
+        const b=balls[i];
+        b.x+=b.vx;b.y+=b.vy;
+        const typeCurve=b.type==='curve'?(b.curve||0.25):0;
+        b.vy+=(baseCurve+typeCurve)*Math.sin(Date.now()*0.01);
+        if(activeEffects.speed)b.x+=b.vx*0.2;
+        if(b.y<=b.size/2||b.y>=c.height-b.size/2){b.vy*=-1;explode(b.x,b.y,'#fff',5);}
+        if(b.x<=paddleW&&b.y>playerY&&b.y<playerY+getPlayerH()){
+            b.vx=Math.abs(b.vx)*1.08;
+            b.vy+=(b.y-(playerY+getPlayerH()/2))*spinMult;
+            explode(b.x,b.y,'#0ff',10);
+            KJ.hit();
+        }
+        if(b.x>=c.width-paddleW&&b.y>aiY&&b.y<aiY+getAIH()){
+            b.vx=-Math.abs(b.vx)*1.08;
+            b.vy+=(b.y-(aiY+getAIH()/2))*0.2;
+            explode(b.x,b.y,'#f00',10);
+            KJ.hit();
+        }
+        if(activeEffects.shield&&b.x<=b.size){
+            b.vx*=-1;explode(b.x,b.y,'#0f0',10);
+        }
+        if(shieldTicks>0&&b.x<=b.size){
+            b.vx*=-1;explode(b.x,b.y,'#0ff',10);
+        }
+        if(b.x<-50||b.x>c.width+50){
+            if(balls.length===1){
+                if(b.x<0){aiScore++;explode(c.width/2,c.height/2,'#f00',50);}
+                else{playerScore++;runCoins+=coinPerScore;explode(c.width/2,c.height/2,'#0ff',50);
+                     if(playerScore>=nextUpgradeAt){nextUpgradeAt+=3;setTimeout(chooseUpgrade,120);}
+                }
+                KM.trackScore(playerScore+aiScore);
+                checkAchievements();
+                resetBall();
+                return;
+            }else{
+                balls.splice(i,1);
+            }
+        }
+        trail.push({x:b.x,y:b.y});
+    }
+    if(trail.length>50)trail.shift();
+}
+
+function updateEffects(){
+    for(let k in activeEffects)if(activeEffects[k]>0)activeEffects[k]--;
+    if(shieldTicks>0)shieldTicks--;
+}
+
+function chooseUpgrade(){
+    if(paused)return;
+    paused=true;
+    const pool=UPGRADE_POOL.slice();
+    for(let i=pool.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+    const choices=pool.slice(0,3);
+    upgradeChoicesEl.innerHTML='';
+    choices.forEach(u=>{
+        const b=document.createElement('button');
+        b.className='upgrade-card';
+        b.innerHTML='<span class="uname">'+u.name+'</span><span class="udesc">'+u.desc+'</span>';
+        b.addEventListener('click',()=>pickUpgrade(u));
+        upgradeChoicesEl.appendChild(b);
+    });
+    upgradeModal.classList.add('visible');
+}
+function pickUpgrade(u){
+    upgrades.push(u.id);upgradesChosen++;
+    applyUpgrade(u.id);
+    upgradeModal.classList.remove('visible');
+    paused=false;
+}
+function applyUpgrade(id){
+    if(id==='spinControl')spinMult+=0.3;
+    if(id==='paddleSize')playerPaddleBonus+=0.25;
+    if(id==='predNerf')aiNerfMult*=0.7;
+    if(id==='trailBoost')baseSpeedBonus+=0.4;
+    if(id==='multiServe')multiServeNext=true;
+    if(id==='shieldZone')shieldTicks+=60*60;
+    if(id==='scoreBoost')coinPerScore+=1;
+}
+
+function checkAchievements(opts){
+    const stats={
+        playerScore, aiScore, streak,
+        mode:selectedMode, upgradesChosen,
+        totalCoins:getCoins(),
+        seenBallTypes:seenBallTypes.size,
+        won: playerScore>aiScore,
+        gameOver: !!opts && !!opts.gameOver
+    };
+    const unlocked=getUnlocked();
+    for(const a of ACHIEVEMENTS){
+        if(!unlocked.includes(a.id)&&a.test(stats))unlock(a.id,a.name);
+    }
+}
+
+function gameUpdate(){
+    if(state==='playing'&&!paused){
+        updatePlayer();
+        updateAI();
+        updateBalls();
+        updatePowerUps();
+        updateEffects();
+        if(playerScore>=11||aiScore>=11){
+            if(playerScore>aiScore)streak++;else streak=0;
+            lset('streak',streak);
+            setBest(playerScore*10);
+            addCoins(runCoins);
+            checkAchievements({gameOver:true});
+            updateChips();
+            KM.gameOver(playerScore+aiScore,{
+                cause:playerScore>aiScore?'win':'lose',
+                onRetry:()=>{resetRun();state='playing';resetBall();}
+            });
+            state='over';
+        }
+    }
+}
+
+function drawBackground(){
+    neon('#111',0);ctx.fillRect(0,0,c.width,c.height);
+    neon('#0ff',30);ctx.beginPath();ctx.setLineDash([10,10]);
+    ctx.moveTo(c.width/2,0);ctx.lineTo(c.width/2,c.height);ctx.stroke();
+    ctx.setLineDash([]);
+    if(shieldTicks>0){
+        ctx.save();ctx.strokeStyle='#0ff';ctx.globalAlpha=0.4+Math.sin(Date.now()*0.01)*0.2;
+        ctx.lineWidth=6;ctx.beginPath();ctx.moveTo(paddleW+4,0);ctx.lineTo(paddleW+4,c.height);ctx.stroke();
+        ctx.restore();
+    }
+}
+
+function drawPaddles(){
+    neon('#0ff',20);ctx.fillRect(0,playerY,paddleW,getPlayerH());
+    neon('#f00',20);ctx.fillRect(c.width-paddleW,aiY,paddleW,getAIH());
+}
+
+function drawBalls(){
+    trail.forEach((t,i)=>{neon('#fff',i*0.5);ctx.fillRect(t.x-2,t.y-2,4,4);});
+    balls.forEach(b=>{
+        neon(b.color||'#fff',30);
+        ctx.fillRect(b.x-b.size/2,b.y-b.size/2,b.size,b.size);
+    });
+}
+
+function drawPowerUps(){
+    powerUps.forEach(p=>{
+        neon(p.color,30);
+        ctx.fillRect(p.x-15,p.y-15,30,30);
+        ctx.strokeRect(p.x-15,p.y-15,30,30);
+    });
+}
+
+function drawHUD(){
+    neon('#0ff',20);
+    ctx.font='60px Orbitron';ctx.fillText(playerScore,100,80);
+    neon('#f00',20);ctx.fillText(aiScore,c.width-150,80);
+    neon('#0ff',10);ctx.font='20px Orbitron';
+    ctx.fillText('Streak: '+streak,20,30);
+    ctx.fillText('Difficulty: '+DIFFICULTIES[selectedMode].name,20,c.height-20);
+    ctx.fillText('Upgrades: '+upgrades.length+'  Coins: +'+runCoins,c.width-300,c.height-20);
+}
+
+function drawOver(){
+    drawBackground();
+    neon(playerScore>aiScore?'#0ff':'#f00',40);
+    ctx.font='80px Orbitron';
+    ctx.fillText(playerScore>aiScore?'YOU WIN':'YOU LOSE',c.width/2-200,c.height/2-50);
+    ctx.font='30px Orbitron';
+    ctx.fillText('Press R or Space to Restart',c.width/2-200,c.height/2+50);
+}
+
+function gameDraw(){
+    ctx.clearRect(0,0,c.width,c.height);
+    if(state==='over')drawOver();
+    else if(state==='menu'){drawBackground();}
+    else{
+        drawBackground();drawPowerUps();drawPaddles();drawBalls();drawHUD();
+    }
+    particles.forEach(p=>{p.update();p.draw();});
+}
+
+function resetRun(){
+    playerScore=0;aiScore=0;
+    upgrades=[];upgradesChosen=0;
+    nextUpgradeAt=3;spinMult=0.2;
+    baseSpeedBonus=0;aiNerfMult=1.0;
+    playerPaddleBonus=1.0;multiServeNext=false;
+    shieldTicks=0;coinPerScore=1;runCoins=0;
+    paused=false;activeEffects={multi:0,big:0,speed:0,curve:0,shield:0};
+    seenBallTypes=new Set();
+}
+
+function loop(){
+    if(KM.isPaused())return;
+    gameUpdate();gameDraw();
+    requestAnimationFrame(loop);
+}
+
+KM.init({slug:SLUG,title:'Neon Pong Plus',tagline:'W/S or Mouse to Move',controls:'W/S or Mouse',world:'Neon Pong',difficulty:selectedMode});
+
+Array.from(diffRow.querySelectorAll('.diff-btn')).forEach(btn=>{
+    if(btn.getAttribute('data-diff')===selectedMode)btn.classList.add('active');
+    else btn.classList.remove('active');
+    btn.addEventListener('click',()=>{
+        selectedMode=btn.getAttribute('data-diff');
+        lset('difficulty',selectedMode);
+        Array.from(diffRow.querySelectorAll('.diff-btn')).forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        updateChips();
+    });
+});
+startBtn.addEventListener('click',()=>{
+    startModal.classList.remove('visible');
+    resetRun();state='playing';resetBall();
+});
+
+addEventListener('keydown',e=>{
+    if(e.key===' '&&state==='menu'){startModal.classList.remove('visible');resetRun();state='playing';resetBall();}
+    if((e.key==='r'||e.key===' ')&&state==='over'){resetRun();state='playing';resetBall();}
+});
+
+updateChips();
+loop();
+
+window.__NEON_PONG__={
+    getScore:        ()=>playerScore,
+    getState:        ()=>state,
+    getAiScore:      ()=>aiScore,
+    getStreak:       ()=>streak,
+    getUpgrades:     ()=>upgrades.slice(),
+    getDifficulty:   ()=>selectedMode,
+    getCoins:        ()=>getCoins(),
+    getAchievements: ()=>getUnlocked(),
+    getBallTypes:    ()=>ENEMY_TYPES.map(e=>e.name),
+    getBalls:        ()=>balls.map(b=>({x:b.x,y:b.y,type:b.type}))
+};
+</script>
+</body>
+</html>

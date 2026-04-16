@@ -254,6 +254,19 @@
 
   <script>window.GEMINI_API_KEY = 'AIzaSyCcB7qv7ToYYIoa8BcgPLBT5AyJVtBv2fs';</script>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.87.0/dist/phaser.min.js"></script>
+  <script src="../shared/kriisko-juice.js"></script>
+  <script src="../shared/kriisko-meta.js"></script>
+  <script>
+    if (window.KM) {
+      window.KM.init({
+        slug: 'llm-pet-rpg',
+        title: 'Whiskers & Wands',
+        tagline: 'Dungeon RPG with an AI-powered companion pet',
+        controls: 'WASD / Arrows to move. Space to attack. Enter to chat with pet. P to pause.',
+        world: 'Descend with a companion who thinks, talks, and helps.'
+      });
+    }
+  </script>
   <script src="../shared/leaderboard.js"></script>
   <script src="scenes/BootScene.js"></script>
   <script src="scenes/TitleScene.js"></script>

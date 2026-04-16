@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neon Survivors</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Audiowide&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000;display:flex;justify-content:center;align-items:center;height:100vh;font-family:Audiowide,monospace;color:#fff;overflow:hidden}
+canvas{display:block;border:2px solid #0ff;image-rendering:pixelated}
+#ui{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:800px;display:flex;justify-content:space-between;align-items:center;font-size:14px}
+.bar{width:200px;height:20px;background:#222;border:1px solid #555;position:relative}
+.fill{height:100%;background:#0ff;transition:width .2s}
+#xpBar .fill{background:#0f0}
+#chooseUpgrade,#start-overlay,#death{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#111;border:2px solid #0ff;padding:24px;display:none;flex-direction:column;gap:10px;min-width:460px;text-align:center;z-index:9}
+#start-overlay{display:flex}
+.card{padding:10px;border:1px solid #0ff;background:#000;cursor:pointer;text-align:center;transition:background .2s}
+.card:hover{background:#0ff;color:#000}
+button,#start-btn,.diffBtn{padding:10px 20px;background:#0ff;border:none;color:#000;font-weight:bold;cursor:pointer;margin:4px;font-family:inherit}
+button:hover,.diffBtn:hover{background:#fff}
+#toast{position:absolute;top:60px;right:20px;display:flex;flex-direction:column;gap:6px;z-index:5}
+.toast{background:#111;border:2px solid #ff0;color:#ff0;padding:8px 14px;animation:pop .4s ease}
+@keyframes pop{from{transform:translateX(200px);opacity:0}to{transform:none;opacity:1}}
+.meta{font-size:12px;color:#aaa;margin-top:4px}
+</style>
+</head>
+<body>
+<canvas id="c" width="800" height="600" aria-label="Game canvas"></canvas>
+<div id="ui">
+  <div>HP <div class="bar" id="hpBar"><div class="fill" id="hpFill"></div></div></div>
+  <div>Time <span id="timer">0</span>s</div>
+  <div>Kills <span id="kills">0</span></div>
+  <div>XP <div class="bar" id="xpBar"><div class="fill" id="xpFill"></div></div></div>
+  <div>Lvl <span id="level">1</span></div>
+</div>
+
+<div id="start-overlay">
+  <h2 style="color:#0ff">NEON SURVIVORS</h2>
+  <p class="meta">Wave survival - roguelike upgrades - proceduralGen spawn seeds</p>
+  <div>
+    <b>Select difficulty mode — easy medium hard:</b><br>
+    <button class="diffBtn" data-diff="easy">Easy</button>
+    <button class="diffBtn" data-diff="normal">Normal</button>
+    <button class="diffBtn" data-diff="hard">Hard</button>
+  </div>
+  <p class="meta" id="metaInfo"></p>
+  <button id="start-btn">Start Run (Space)</button>
+</div>
+
+<div id="chooseUpgrade"></div>
+
+<div id="death">
+  <h2>YOU DIED</h2>
+  <p>Time: <span id="finalTime"></span>s</p>
+  <p>Kills: <span id="finalKills"></span></p>
+  <p>Level: <span id="finalLevel"></span></p>
+  <p>Souls earned: <span id="soulsEarned"></span></p>
+  <button onclick="location.reload()">Play Again</button>
+</div>
+
+<div id="toast"></div>
+
+<script src="../shared/kriisko-juice.js"></script>
+<script src="../shared/kriisko-meta.js"></script>
+<script>
+// ---------- proceduralGen / mulberry32 seeded RNG ----------
+const SEED = Math.floor(Math.random()*1e9); // proceduralGen: enemy spawn sequence seed
+function mulberry32(a){return function(){let t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
+const rng = mulberry32(SEED);
+function rand(a,b){return rng()*(b-a)+a}
+function irand(a,b){return Math.floor(rand(a,b))}
+
+// ---------- meta-progression / localStorage ----------
+const STORE_KEY='neonSurvivors.meta.v2';
+const meta = JSON.parse(localStorage.getItem(STORE_KEY)||'null') || {
+  souls:0, runs:0, bestTime:0, bestKills:0,
+  unlocks:{tier1:false,tier2:false,tier3:false,tier4:false,tier5:false},
+  achievements:{}
+};
+function saveMeta(){localStorage.setItem(STORE_KEY,JSON.stringify(meta))}
+
+// ---------- 8 achievements ----------
+const ACHIEVEMENTS=[
+  {id:'first_blood',name:'First Blood',desc:'Kill 1 enemy',check:s=>s.kills>=1},
+  {id:'slayer',name:'Slayer',desc:'50 kills',check:s=>s.kills>=50},
+  {id:'butcher',name:'Butcher',desc:'250 kills',check:s=>s.kills>=250},
+  {id:'survivor_60',name:'Survivor',desc:'Survive 60s',check:s=>s.time>=60},
+  {id:'survivor_180',name:'Veteran',desc:'Survive 180s',check:s=>s.time>=180},
+  {id:'level5',name:'Ascending',desc:'Reach level 5',check:s=>s.level>=5},
+  {id:'level10',name:'Transcendent',desc:'Reach level 10',check:s=>s.level>=10},
+  {id:'soul_collector',name:'Soul Collector',desc:'Earn 500 souls',check:()=>meta.souls>=500}
+];
+function toast(msg,color='#ff0'){
+  const div=document.createElement('div');div.className='toast';div.textContent=msg;div.style.borderColor=color;div.style.color=color;
+  document.getElementById('toast').appendChild(div);
+  setTimeout(()=>div.remove(),3000);
+}
+function checkAchievements(){
+  for(const a of ACHIEVEMENTS){
+    if(!meta.achievements[a.id]&&a.check({kills,time,level})){
+      meta.achievements[a.id]=Date.now();
+      toast('Achievement - '+a.name);
+      saveMeta();
+    }
+  }
+}
+
+// ---------- 5 unlock tiers from souls ----------
+const UNLOCK_TIERS=[
+  {key:'tier1',cost:50, name:'Tier 1: +10 HP',apply:()=>{player.maxHp+=10;player.hp+=10}},
+  {key:'tier2',cost:150,name:'Tier 2: +15% speed',apply:()=>{player.speed*=1.15}},
+  {key:'tier3',cost:300,name:'Tier 3: +1 projectile',apply:()=>{player.projectiles++}},
+  {key:'tier4',cost:600,name:'Tier 4: +25% damage',apply:()=>{player.damage*=1.25}},
+  {key:'tier5',cost:1000,name:'Tier 5: Magnet boost',apply:()=>{player.magnet*=2}}
+];
+
+// ---------- difficulty modes: easy/normal/hard ----------
+const DIFFICULTIES={
+  easy:   {hpMul:1.3, spawnMul:0.75, enemyHpMul:0.8, damageMul:1.2, label:'Easy'},
+  normal: {hpMul:1.0, spawnMul:1.0,  enemyHpMul:1.0, damageMul:1.0, label:'Normal'},
+  hard:   {hpMul:0.7, spawnMul:1.5,  enemyHpMul:1.3, damageMul:0.85,label:'Hard'}
+};
+let difficulty=DIFFICULTIES.normal;
+
+// ---------- ENEMY_TYPES: 5 classes with distinct behaviors ----------
+class EnemyBase{
+  constructor(x,y,w){this.x=x;this.y=y;this.wave=w;this.vx=0;this.vy=0;this.hitFlash=0}
+  update(dt){this.hitFlash=Math.max(0,this.hitFlash-dt)}
+  takeDmg(d){this.hp-=d;this.hitFlash=0.12}
+}
+class EnemyChaser extends EnemyBase{
+  constructor(x,y,w){super(x,y,w);this.r=10;this.hp=(10+w*3)*difficulty.enemyHpMul;this.speed=60+w*4;this.color='#f33';this.type='chaser'}
+  update(dt){super.update(dt);const a=Math.atan2(player.y-this.y,player.x-this.x);this.x+=Math.cos(a)*this.speed*dt;this.y+=Math.sin(a)*this.speed*dt}
+}
+class EnemyShooter extends EnemyBase{
+  constructor(x,y,w){super(x,y,w);this.r=11;this.hp=(15+w*3)*difficulty.enemyHpMul;this.speed=35;this.color='#f0a';this.type='shooter';this.fireTimer=rand(1,2)}
+  update(dt){super.update(dt);const a=Math.atan2(player.y-this.y,player.x-this.x);this.x+=Math.cos(a)*this.speed*dt;this.y+=Math.sin(a)*this.speed*dt;
+    this.fireTimer-=dt;if(this.fireTimer<=0){this.fireTimer=2;const ang=Math.atan2(player.y-this.y,player.x-this.x);enemyBullets.push({x:this.x,y:this.y,vx:Math.cos(ang)*200,vy:Math.sin(ang)*200,r:4,life:4})}}
+}
+class EnemyTank extends EnemyBase{
+  constructor(x,y,w){super(x,y,w);this.r=18;this.hp=(40+w*8)*difficulty.enemyHpMul;this.speed=30;this.color='#a44';this.type='tank'}
+  update(dt){super.update(dt);const a=Math.atan2(player.y-this.y,player.x-this.x);this.x+=Math.cos(a)*this.speed*dt;this.y+=Math.sin(a)*this.speed*dt}
+}
+class EnemySwarmer extends EnemyBase{
+  constructor(x,y,w){super(x,y,w);this.r=6;this.hp=(4+w)*difficulty.enemyHpMul;this.speed=110+w*3;this.color='#ff5';this.type='swarmer'}
+  update(dt){super.update(dt);const a=Math.atan2(player.y-this.y,player.x-this.x)+Math.sin(time*3)*0.3;this.x+=Math.cos(a)*this.speed*dt;this.y+=Math.sin(a)*this.speed*dt}
+}
+class EnemySplitter extends EnemyBase{
+  constructor(x,y,w,small=false){super(x,y,w);this.r=small?7:14;this.hp=(small?8:20)*difficulty.enemyHpMul;this.speed=small?90:50;this.color=small?'#8cf':'#08f';this.type='splitter';this.small=small}
+  update(dt){super.update(dt);const a=Math.atan2(player.y-this.y,player.x-this.x);this.x+=Math.cos(a)*this.speed*dt;this.y+=Math.sin(a)*this.speed*dt}
+  onDeath(){if(!this.small){for(let i=0;i<3;i++)enemies.push(new EnemySplitter(this.x+rand(-12,12),this.y+rand(-12,12),this.wave,true))}}
+}
+const ENEMY_TYPES=[EnemyChaser, EnemyShooter, EnemyTank, EnemySwarmer, EnemySplitter];
+function spawnEnemyByProcGen(wave){
+  const r=rng();let EClass;
+  if(wave<2)      EClass=r<.8?EnemyChaser:EnemySwarmer;
+  else if(wave<5) EClass=r<.5?EnemyChaser:r<.75?EnemyShooter:r<.9?EnemySwarmer:EnemySplitter;
+  else            EClass=r<.3?EnemyChaser:r<.5?EnemyShooter:r<.7?EnemyTank:r<.85?EnemySwarmer:EnemySplitter;
+  const side=irand(0,4);let x,y;
+  if(side===0){x=rand(-20,W+20);y=-20}else if(side===1){x=W+20;y=rand(-20,H+20)}
+  else if(side===2){x=rand(-20,W+20);y=H+20}else{x=-20;y=rand(-20,H+20)}
+  enemies.push(new EClass(x,y,wave));
+}
+
+// ---------- WEAPON_TYPES: 5 weapon classes ----------
+class WeaponBase{constructor(){this.cd=0}update(dt){this.cd=Math.max(0,this.cd-dt)}}
+class WeaponPistol extends WeaponBase{fire(){this.cd=player.fireRate/1000;const n=enemies.sort((a,b)=>dist(a,player)-dist(b,player))[0];if(!n)return;for(let i=0;i<player.projectiles;i++){const a=Math.atan2(n.y-player.y,n.x-player.x)+rand(-.08,.08);bullets.push({x:player.x,y:player.y,vx:Math.cos(a)*420,vy:Math.sin(a)*420,damage:player.damage*difficulty.damageMul,r:4*player.size,type:'pistol'})}}}
+class WeaponOrb extends WeaponBase{fire(){if(this.cd>0)return;this.cd=0.02;player.orbAngle=(player.orbAngle||0)+0.04}}
+class WeaponShotgun extends WeaponBase{fire(){this.cd=player.fireRate/1000*1.7;const n=enemies.sort((a,b)=>dist(a,player)-dist(b,player))[0];if(!n)return;const base=Math.atan2(n.y-player.y,n.x-player.x);for(let i=-2;i<=2;i++){const a=base+i*0.18;bullets.push({x:player.x,y:player.y,vx:Math.cos(a)*380,vy:Math.sin(a)*380,damage:player.damage*0.7*difficulty.damageMul,r:3,type:'shotgun',life:0.6})}}}
+class WeaponLaser extends WeaponBase{fire(){this.cd=player.fireRate/1000*2;const n=enemies.sort((a,b)=>dist(a,player)-dist(b,player))[0];if(!n)return;const a=Math.atan2(n.y-player.y,n.x-player.x);bullets.push({x:player.x,y:player.y,vx:Math.cos(a)*700,vy:Math.sin(a)*700,damage:player.damage*2.1*difficulty.damageMul,r:5,type:'laser',pierce:5})}}
+class WeaponMine extends WeaponBase{fire(){this.cd=1.5;mines.push({x:player.x+rand(-20,20),y:player.y+rand(-20,20),r:10,damage:player.damage*3*difficulty.damageMul,life:10,armed:false,timer:0.5})}}
+const WEAPON_TYPES=[WeaponPistol, WeaponOrb, WeaponShotgun, WeaponLaser, WeaponMine];
+
+// ---------- UPGRADE_POOL: 12 upgrade nodes wired to choose-upgrade modal ----------
+const UPGRADE_POOL=[
+  {id:'fireRate',  name:'Fire Rate',       desc:'-10% cooldown',          apply:()=>player.fireRate*=0.9},
+  {id:'damage',    name:'Damage',          desc:'+3 damage',              apply:()=>player.damage+=3},
+  {id:'speed',     name:'Move Speed',      desc:'+15% speed',             apply:()=>player.speed*=1.15},
+  {id:'projectile',name:'Multi-Shot',      desc:'+1 projectile',          apply:()=>player.projectiles++},
+  {id:'size',      name:'Size',            desc:'+10% projectile size',   apply:()=>player.size*=1.1},
+  {id:'hp',        name:'Max HP',          desc:'+25 max HP (+heal)',     apply:()=>{player.maxHp+=25;player.hp+=25}},
+  {id:'magnet',    name:'Magnet',          desc:'+40 pickup range',       apply:()=>player.magnet+=40},
+  {id:'orb',       name:'Unlock Orbs',     desc:'Orbital companion',      apply:()=>{if(!player.weapons.find(w=>w.type==='orb'))player.weapons.push({type:'orb',ref:new WeaponOrb()})}},
+  {id:'shotgun',   name:'Unlock Shotgun',  desc:'5-spread burst',         apply:()=>{if(!player.weapons.find(w=>w.type==='shotgun'))player.weapons.push({type:'shotgun',ref:new WeaponShotgun()})}},
+  {id:'laser',     name:'Unlock Laser',    desc:'Piercing beam',          apply:()=>{if(!player.weapons.find(w=>w.type==='laser'))player.weapons.push({type:'laser',ref:new WeaponLaser()})}},
+  {id:'mine',      name:'Unlock Mine',     desc:'Drop proximity mines',   apply:()=>{if(!player.weapons.find(w=>w.type==='mine'))player.weapons.push({type:'mine',ref:new WeaponMine()})}},
+  {id:'regen',     name:'Regen',           desc:'+0.5 HP/sec',            apply:()=>player.regen+=0.5}
+];
+
+// ---------- Game state ----------
+const c=document.getElementById('c');const ctx=c.getContext('2d');const W=800,H=600;ctx.imageSmoothingEnabled=false;
+let running=false,paused=false,shake=0,wave=1,waveTimer=0;
+let kills=0,time=0,level=1,xp=0,xpToNext=100;
+let player={x:W/2,y:H/2,r:12,hp:100,maxHp:100,speed:180,fireRate:500,damage:10,projectiles:1,size:1,magnet:60,regen:0,orbAngle:0,weapons:[{type:'pistol',ref:new WeaponPistol()}]};
+let enemies=[],bullets=[],enemyBullets=[],particles=[],orbs=[],mines=[];
+let keys={},lastHit=0,lastSpawn=0;
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+
+// ---------- choose upgrade modal (3 random from UPGRADE_POOL) ----------
+function levelUp(){
+  level++;xp=0;xpToNext=100+level*25;paused=true;
+  const div=document.getElementById('chooseUpgrade');
+  div.style.display='flex';div.innerHTML='<h2>LEVEL UP</h2>';
+  const avail=UPGRADE_POOL.filter(u=>{
+    if(['orb','shotgun','laser','mine'].includes(u.id)&&player.weapons.find(w=>w.type===u.id))return false;
+    return true;
+  });
+  const opts=[...avail].sort(()=>rng()-0.5).slice(0,3);
+  opts.forEach(u=>{
+    const card=document.createElement('div');card.className='card';
+    card.innerHTML='<b>'+u.name+'</b><br>'+u.desc;
+    card.onclick=()=>{u.apply();div.style.display='none';paused=false;if(window.KJ&&KJ.levelUp)KJ.levelUp()};
+    div.appendChild(card);
+  });
+}
+
+function particle(x,y,color){particles.push({x,y,vx:rand(-80,80),vy:rand(-80,80),life:1,color})}
+function shakeScreen(a){shake=Math.max(shake,a)}
+
+function updatePlayer(dt){
+  if(keys.w||keys.arrowup)player.y-=player.speed*dt;
+  if(keys.s||keys.arrowdown)player.y+=player.speed*dt;
+  if(keys.a||keys.arrowleft)player.x-=player.speed*dt;
+  if(keys.d||keys.arrowright)player.x+=player.speed*dt;
+  player.x=Math.max(player.r,Math.min(W-player.r,player.x));
+  player.y=Math.max(player.r,Math.min(H-player.r,player.y));
+  player.hp=Math.min(player.maxHp,player.hp+player.regen*dt);
+  player.orbAngle=(player.orbAngle||0)+dt*2.2;
+  // fire all weapons
+  for(const w of player.weapons){w.ref.update(dt);if(w.ref.cd<=0)w.ref.fire()}
+  // orb dmg
+  const orbW=player.weapons.find(w=>w.type==='orb');
+  if(orbW){const count=1+Math.floor(player.projectiles/2);
+    for(let i=0;i<count;i++){const a=player.orbAngle+i*Math.PI*2/count;const ox=player.x+Math.cos(a)*50,oy=player.y+Math.sin(a)*50;
+      for(const e of enemies){if(Math.hypot(e.x-ox,e.y-oy)<e.r+8){e.takeDmg(player.damage*0.6*dt*10);particle(ox,oy,'#f0f')}}
+    }
+  }
+}
+function updateEnemies(dt){
+  for(const e of enemies){e.update(dt);
+    if(dist(e,player)<e.r+player.r&&Date.now()-lastHit>500){
+      player.hp-=8;lastHit=Date.now();shakeScreen(5);
+      if(window.KJ&&KJ.flash)KJ.flash('#fff',70);
+      if(player.hp<=0)gameOver();
+    }
+  }
+}
+function updateBullets(dt){
+  for(let i=bullets.length-1;i>=0;i--){const b=bullets[i];
+    b.x+=b.vx*dt;b.y+=b.vy*dt;
+    if(b.life!==undefined){b.life-=dt;if(b.life<=0){bullets.splice(i,1);continue}}
+    if(b.x<0||b.x>W||b.y<0||b.y>H){bullets.splice(i,1);continue}
+    let hit=false;
+    for(let j=enemies.length-1;j>=0;j--){const e=enemies[j];
+      if(dist(b,e)<b.r+e.r){e.takeDmg(b.damage);for(let k=0;k<3;k++)particle(e.x,e.y,'#ff0');
+        if(e.hp<=0){for(let k=0;k<8;k++)particle(e.x,e.y,e.color);
+          if(e.onDeath)e.onDeath();
+          if(rng()<0.55)orbs.push({x:e.x,y:e.y,r:5,value:8+Math.floor(e.r*0.4)});
+          enemies.splice(j,1);kills++;
+          if(window.KM&&KM.trackScore)KM.trackScore(kills);
+          if(window.KJ&&KJ.particles)KJ.particles(e.x,e.y,10,e.color);
+        }
+        if(b.pierce){b.pierce--;if(b.pierce<=0){hit=true;break}}
+        else{hit=true;break}
+      }
+    }
+    if(hit){bullets.splice(i,1)}
+  }
+}
+function updateEnemyBullets(dt){
+  for(let i=enemyBullets.length-1;i>=0;i--){const b=enemyBullets[i];
+    b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;
+    if(b.life<=0||b.x<-20||b.x>W+20||b.y<-20||b.y>H+20){enemyBullets.splice(i,1);continue}
+    if(dist(b,player)<b.r+player.r&&Date.now()-lastHit>400){
+      player.hp-=5;lastHit=Date.now();shakeScreen(3);enemyBullets.splice(i,1);
+      if(player.hp<=0)gameOver();
+    }
+  }
+}
+function updateOrbs(dt){
+  for(let i=orbs.length-1;i>=0;i--){const o=orbs[i];const d=dist(o,player);
+    if(d<player.magnet){const a=Math.atan2(player.y-o.y,player.x-o.x);o.x+=Math.cos(a)*240*dt;o.y+=Math.sin(a)*240*dt}
+    if(d<o.r+player.r){xp+=o.value;orbs.splice(i,1);if(xp>=xpToNext)levelUp()}
+  }
+}
+function updateMines(dt){
+  for(let i=mines.length-1;i>=0;i--){const m=mines[i];m.timer-=dt;m.life-=dt;
+    if(m.timer<=0)m.armed=true;
+    if(m.armed){for(const e of enemies){if(dist(m,e)<30){for(const e2 of enemies){if(dist(m,e2)<55)e2.takeDmg(m.damage)}for(let k=0;k<14;k++)particle(m.x,m.y,'#fa0');shakeScreen(4);mines.splice(i,1);break}}}
+    if(m.life<=0)mines.splice(i,1);
+  }
+}
+function updateParticles(dt){for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt*2;if(p.life<=0)particles.splice(i,1)}}
+
+function gameOver(){
+  running=false;
+  const earned=Math.floor(kills*0.4+time*0.5+level*5);
+  meta.souls+=earned;meta.runs++;
+  if(time>meta.bestTime)meta.bestTime=time;
+  if(kills>meta.bestKills)meta.bestKills=kills;
+  checkAchievements();saveMeta();
+  if(window.KM&&KM.gameOver)KM.gameOver(kills,{cause:'death',onRetry:()=>location.reload()});
+  document.getElementById('death').style.display='flex';
+  document.getElementById('finalTime').textContent=Math.floor(time);
+  document.getElementById('finalKills').textContent=kills;
+  document.getElementById('finalLevel').textContent=level;
+  document.getElementById('soulsEarned').textContent=earned;
+  if(window.KJ&&KJ.gameOver)KJ.gameOver();
+}
+
+function draw(){
+  ctx.save();
+  if(shake){ctx.translate(rand(-shake,shake),rand(-shake,shake));shake*=0.9}
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  for(let i=0;i<60;i++){ctx.fillStyle='#224';ctx.fillRect((i*97+time*10)%W,(i*53)%H,2,2)}
+  // mines
+  for(const m of mines){ctx.fillStyle=m.armed?'#f70':'#770';ctx.beginPath();ctx.arc(m.x,m.y,m.r,0,Math.PI*2);ctx.fill()}
+  // orbs (xp)
+  for(const o of orbs){ctx.fillStyle='#0f0';ctx.beginPath();ctx.arc(o.x,o.y,o.r,0,Math.PI*2);ctx.fill()}
+  // enemies
+  for(const e of enemies){ctx.fillStyle=e.hitFlash>0?'#fff':e.color;ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,Math.PI*2);ctx.fill()}
+  // bullets
+  for(const b of bullets){ctx.fillStyle=b.type==='laser'?'#0ff':b.type==='shotgun'?'#fa0':'#ff0';ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill()}
+  for(const b of enemyBullets){ctx.fillStyle='#f0a';ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill()}
+  // orb weapon render
+  const orbW=player.weapons.find(w=>w.type==='orb');
+  if(orbW){const n=1+Math.floor(player.projectiles/2);for(let i=0;i<n;i++){const a=player.orbAngle+i*Math.PI*2/n;ctx.fillStyle='#f0f';ctx.beginPath();ctx.arc(player.x+Math.cos(a)*50,player.y+Math.sin(a)*50,6,0,Math.PI*2);ctx.fill()}}
+  // player
+  ctx.fillStyle=Date.now()-lastHit<100?'#fff':'#0ff';
+  ctx.beginPath();ctx.arc(player.x,player.y,player.r*player.size,0,Math.PI*2);ctx.fill();
+  // particles
+  for(const p of particles){ctx.globalAlpha=p.life;ctx.fillStyle=p.color;ctx.fillRect(p.x-2,p.y-2,4,4)}
+  ctx.globalAlpha=1;ctx.restore();
+  // wave label
+  ctx.fillStyle='#0ff';ctx.font='14px Audiowide';ctx.textAlign='left';ctx.fillText('Wave '+wave+' / Seed '+SEED,10,580);
+}
+
+function updateUI(){
+  document.getElementById('hpFill').style.width=(Math.max(0,player.hp)/player.maxHp*100)+'%';
+  document.getElementById('xpFill').style.width=(xp/xpToNext*100)+'%';
+  document.getElementById('level').textContent=level;
+  document.getElementById('kills').textContent=kills;
+  document.getElementById('timer').textContent=Math.floor(time);
+}
+
+let last=0;
+function loop(ts){
+  const dt=Math.min((ts-last)/1000,0.05);last=ts;
+  if(running&&!paused&&!(window.KM&&KM.isPaused&&KM.isPaused())){
+    time+=dt;waveTimer+=dt;
+    if(waveTimer>25){waveTimer=0;wave++;toast('Wave '+wave,'#0ff')}
+    updatePlayer(dt);updateEnemies(dt);updateBullets(dt);updateEnemyBullets(dt);updateOrbs(dt);updateMines(dt);updateParticles(dt);
+    const spawnRate=(0.020+wave*0.004)*difficulty.spawnMul;
+    if(rng()<spawnRate)spawnEnemyByProcGen(wave);
+    checkAchievements();
+  }
+  draw();updateUI();requestAnimationFrame(loop);
+}
+
+// ---------- start / difficulty selection ----------
+function applyUnlocks(){for(const t of UNLOCK_TIERS){if(meta.unlocks[t.key])t.apply()}}
+function startRun(diffKey){
+  difficulty=DIFFICULTIES[diffKey]||DIFFICULTIES.normal;
+  player.maxHp*=difficulty.hpMul;player.hp=player.maxHp;
+  applyUnlocks();
+  document.getElementById('start-overlay').style.display='none';
+  running=true;
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  const info=document.getElementById('metaInfo');
+  const unlockedCount=UNLOCK_TIERS.filter(t=>meta.unlocks[t.key]).length;
+  info.innerHTML='Souls: '+meta.souls+' &bull; Runs: '+meta.runs+' &bull; Unlocks: '+unlockedCount+'/5 &bull; Best '+Math.floor(meta.bestTime)+'s';
+  // auto-purchase next unlock with souls
+  for(const t of UNLOCK_TIERS){if(!meta.unlocks[t.key]&&meta.souls>=t.cost){meta.unlocks[t.key]=true;meta.souls-=t.cost;toast('Unlocked '+t.name,'#0f0');saveMeta();break}}
+  document.querySelectorAll('.diffBtn').forEach(b=>b.addEventListener('click',()=>startRun(b.dataset.diff)));
+  document.getElementById('start-btn').addEventListener('click',()=>startRun('normal'));
+});
+
+if(window.KM&&KM.init)KM.init({slug:'neon-survivors',title:'Neon Survivors',tagline:'Survive the procedural wave',controls:'WASD or Touch',world:'Neon City'});
+window.onkeydown=e=>{keys[e.key.toLowerCase()]=true;if(e.key===' '&&!running)startRun('normal')};
+window.onkeyup=e=>{keys[e.key.toLowerCase()]=false};
+
+// ---------- debug API ----------
+window.__NEONSURV__={getScore:()=>kills,getState:()=>({kills,time,level,wave,seed:SEED,difficulty:difficulty.label})};
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

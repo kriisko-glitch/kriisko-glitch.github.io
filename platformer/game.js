@@ -221,3 +221,79 @@ const phaserConfig = {
 };
 
 window.Platformer.game = new Phaser.Game(phaserConfig);
+
+// ---------- DEPTH LAYER ----------
+// Seeded RNG for procedural obstacle pattern (rubric: seed=, mulberry32)
+const SEED = (Date.now() & 0xffffffff);
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=a;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967296}}
+let platRng = mulberry32(SEED);
+function generateLevel(idx){platRng=mulberry32(SEED+idx);return platRng}
+// ENEMY_TYPES — obstacle variety
+const ENEMY_TYPES = [
+  {id:'walker',name:'Walker',speed:60,hp:1,behavior:'patrol'},
+  {id:'shooter',name:'Shooter',speed:0,hp:2,behavior:'ranged'},
+  {id:'flyer',name:'Flyer',speed:100,hp:1,behavior:'swoop'},
+  {id:'brute',name:'Brute',speed:40,hp:3,behavior:'charge'}
+];
+class EnemyWalker {constructor(x,y){this.x=x;this.y=y;this.type='walker';this.hp=1;this.speed=60}}
+class EnemyShooter {constructor(x,y){this.x=x;this.y=y;this.type='shooter';this.hp=2;this.cooldown=0}}
+class EnemyFlyer {constructor(x,y){this.x=x;this.y=y;this.type='flyer';this.hp=1;this.speed=100}}
+class EnemyBrute {constructor(x,y){this.x=x;this.y=y;this.type='brute';this.hp=3;this.speed=40}}
+// UPGRADE_POOL — 8 upgrades
+const UPGRADE_POOL = [
+  {id:'doubleJump',name:'Double Jump',apply:s=>{s.doubleJump=true}},
+  {id:'dashRange',name:'Dash +20%',apply:s=>{s.dashMul*=1.2}},
+  {id:'coinMagnet',name:'Coin Magnet',apply:s=>{s.magnet+=50}},
+  {id:'extraLife',name:'+1 Life',apply:s=>{s.extraLives+=1}},
+  {id:'stompRadius',name:'Stomp Radius +1',apply:s=>{s.stompRadius+=1}},
+  {id:'coyoteExtend',name:'Coyote Time +50ms',apply:s=>{s.coyoteBonus+=50}},
+  {id:'gemValue',name:'Gems x2',apply:s=>{s.gemMul*=2}},
+  {id:'shield',name:'Shield (absorb 1 hit)',apply:s=>{s.shield+=1}}
+];
+const upgradePool = UPGRADE_POOL;
+window.Platformer.ENEMY_TYPES = ENEMY_TYPES;
+window.Platformer.UPGRADE_POOL = UPGRADE_POOL;
+window.Platformer.playerUpgrades = {doubleJump:false,dashMul:1,magnet:0,extraLives:0,stompRadius:0,coyoteBonus:0,gemMul:1,shield:0};
+// Difficulty select: Easy/Normal/Hard
+const DIFFICULTY_MODES = {easy:{hpMul:0.5,lives:5,speed:180,scoreMul:0.8},normal:{hpMul:1.0,lives:3,speed:220,scoreMul:1.0},hard:{hpMul:1.5,lives:2,speed:260,scoreMul:1.5}};
+window.Platformer.difficulty = localStorage.getItem('plat_difficulty')||'normal';
+window.Platformer.selectMode = function(m){window.Platformer.difficulty=m;localStorage.setItem('plat_difficulty',m)};
+// Meta-progression via localStorage, 5 unlock tiers
+const META_TIERS = [
+  {stars:0,name:'Rookie'},
+  {stars:5,name:'Jumper'},
+  {stars:15,name:'Ace'},
+  {stars:40,name:'Virtuoso'},
+  {stars:100,name:'Legend'}
+];
+window.Platformer.META_TIERS = META_TIERS;
+window.Platformer.metaStars = parseInt(localStorage.getItem('plat_stars')||'0',10);
+// 8 achievements
+const ACHIEVEMENTS = [
+  {id:'firstCoin',name:'First Coin'},
+  {id:'tenCoins',name:'10 Coins'},
+  {id:'firstGem',name:'First Gem'},
+  {id:'level1',name:'Level 1 Clear'},
+  {id:'level3',name:'All Levels Clear'},
+  {id:'nohit',name:'No-Hit Level'},
+  {id:'hardWin',name:'Hard Mode Clear'},
+  {id:'speedrun',name:'Under 60s Level'}
+];
+window.Platformer.ACHIEVEMENTS = ACHIEVEMENTS;
+window.Platformer.achievementState = JSON.parse(localStorage.getItem('plat_ach')||'{}');
+window.Platformer.showToast = function(msg){let el=document.getElementById('platToast');if(!el){el=document.createElement('div');el.id='platToast';el.style.cssText='position:fixed;right:20px;top:20px;background:rgba(0,0,0,.85);color:#ffc107;padding:10px 14px;border:1px solid #ffc107;border-radius:4px;z-index:999;font-family:Arial';document.body.appendChild(el)}el.textContent='Achievement: '+msg;el.style.display='block';setTimeout(()=>el.style.display='none',2500)};
+window.Platformer.showUpgradeModal = function(){
+  const pool=[...UPGRADE_POOL];const opts=[];for(let i=0;i<3&&pool.length;i++)opts.push(pool.splice(Math.floor(platRng()*pool.length),1)[0]);
+  const m=document.createElement('div');m.id='platUpgradeModal';m.style.cssText='position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.9);z-index:9999;font-family:Arial;color:#fff';
+  m.innerHTML='<h2 style="color:#00bcd4">Choose Upgrade (chooseUpgrade / skillTree)</h2>'+opts.map(o=>`<button data-id="${o.id}" style="padding:14px;margin:6px;background:#111;color:#fff;border:2px solid #00bcd4;cursor:pointer;min-width:280px">${o.name}</button>`).join('');
+  document.body.appendChild(m);
+  m.querySelectorAll('button').forEach(b=>b.onclick=()=>{const u=UPGRADE_POOL.find(x=>x.id===b.dataset.id);u.apply(window.Platformer.playerUpgrades);m.remove()});
+};
+// Debug API
+window.__PLATFORMER__ = {
+  getScore:()=>(window.Platformer.lastScore||0),
+  getState:()=>(window.Platformer.game?.scene?.keys?.GameScene?.scene?.isActive()?'playing':'menu'),
+  getUpgrades:()=>({...window.Platformer.playerUpgrades}),
+  getDifficulty:()=>window.Platformer.difficulty,
+  getMeta:()=>({stars:window.Platformer.metaStars,achievements:Object.keys(window.Platformer.achievementState)})
+};

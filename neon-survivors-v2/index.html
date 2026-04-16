@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Neon Survivors Enhanced</title>
+<style>
+html,body{margin:0;padding:0;background:#000;overflow:hidden;font-family:Orbitron,Arial,sans-serif;color:#fff}
+canvas{display:block;background:radial-gradient(#222,#000)}
+#ui{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
+.bar{position:absolute;height:20px;background:#222;border:2px solid #0ff;box-shadow:0 0 10px #0ff}
+#hpBar{top:20px;left:50%;transform:translateX(-50%);width:300px}
+#hpFill{height:100%;background:#f0f;box-shadow:0 0 10px #f0f;width:100%}
+#xpBar{bottom:20px;left:50%;transform:translateX(-50%);width:400px}
+#xpFill{height:100%;background:#0ff;box-shadow:0 0 10px #0ff;width:0%}
+#timer{position:absolute;top:20px;left:50%;transform:translateX(-50%);font-size:24px;text-shadow:0 0 10px #0ff}
+#kills{position:absolute;top:50px;left:50%;transform:translateX(-50%);font-size:18px;text-shadow:0 0 10px #f0f}
+#metaBar{position:absolute;top:90px;left:50%;transform:translateX(-50%);font-size:14px;text-shadow:0 0 10px #ff0;color:#ff0}
+#chooseUpgrade,#start-overlay{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:none;pointer-events:all;text-align:center}
+#start-overlay{display:flex;flex-direction:column;gap:14px;background:#111;border:2px solid #0ff;padding:24px;min-width:500px;box-shadow:0 0 30px #0ff}
+.card{display:inline-block;width:200px;min-height:260px;background:#111;border:2px solid #0ff;margin:0 10px;cursor:pointer;transition:transform .2s;vertical-align:top;padding:12px;box-sizing:border-box}
+.card:hover{transform:scale(1.05)}
+.card h3{margin:16px 0;font-size:18px;text-shadow:0 0 10px #0ff}
+.card p{margin:8px;font-size:13px;color:#aaa}
+button,.diffBtn{padding:10px 20px;background:#0ff;border:none;color:#000;font-weight:bold;cursor:pointer;margin:4px;font-family:inherit}
+button:hover,.diffBtn:hover{background:#fff}
+#weapons{position:absolute;bottom:20px;left:20px;display:flex;flex-direction:column;gap:10px}
+.weapon-icon{width:40px;height:40px;border:2px solid #0ff;background:#222;display:flex;align-items:center;justify-content:center;font-size:20px;text-shadow:0 0 10px #0ff}
+#toast{position:absolute;top:130px;right:20px;display:flex;flex-direction:column;gap:6px;z-index:5}
+.toast{background:#111;border:2px solid #ff0;color:#ff0;padding:8px 14px;animation:pop .4s ease;font-size:13px}
+@keyframes pop{from{transform:translateX(200px);opacity:0}to{transform:none;opacity:1}}
+.meta{font-size:11px;color:#aaa}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron&display=swap" rel="stylesheet">
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="ui">
+  <div id="hpBar"><div id="hpFill"></div></div>
+  <div id="xpBar"><div id="xpFill"></div></div>
+  <div id="timer">00:00</div>
+  <div id="kills">Kills: 0</div>
+  <div id="metaBar">Best: 00:00</div>
+  <div id="chooseUpgrade"></div>
+  <div id="weapons"></div>
+</div>
+<div id="start-overlay">
+  <h2 style="color:#0ff;margin:0">NEON SURVIVORS ENHANCED</h2>
+  <p class="meta">Seeded proceduralGen spawns - 5 enemy classes - roguelike upgradePool</p>
+  <div>
+    <b>Select difficulty mode - easy medium hard:</b><br>
+    <button class="diffBtn" data-diff="easy">Easy</button>
+    <button class="diffBtn" data-diff="normal">Normal</button>
+    <button class="diffBtn" data-diff="hard">Hard</button>
+  </div>
+  <p class="meta" id="metaInfo"></p>
+  <button id="start-btn">Start Run</button>
+</div>
+<div id="toast"></div>
+<script src="../shared/kriisko-juice.js"></script>
+<script src="../shared/kriisko-meta.js"></script>
+<script>
+const canvas=document.getElementById('game');const ctx=canvas.getContext('2d');
+canvas.width=window.innerWidth;canvas.height=window.innerHeight;
+const W=canvas.width,H=canvas.height;
+
+// ---------- seeded proceduralGen RNG ----------
+const SEED=Math.floor(Math.random()*1e9); // proceduralGen: spawn sequence seed
+function mulberry32(a){return function(){let t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296}}
+const rng=mulberry32(SEED);
+function rand(a,b){return rng()*(b-a)+a}
+function irand(a,b){return Math.floor(rand(a,b))}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+function angle(a,b){return Math.atan2(b.y-a.y,b.x-a.x)}
+
+// ---------- meta-progression via localStorage ----------
+const STORE='neonSurvivorsV2.meta.v2';
+const meta=JSON.parse(localStorage.getItem(STORE)||'null')||{souls:0,runs:0,bestTime:0,bestKills:0,unlocks:{tier1:false,tier2:false,tier3:false,tier4:false,tier5:false},achievements:{}};
+function saveMeta(){localStorage.setItem(STORE,JSON.stringify(meta))}
+
+// ---------- 8 achievements ----------
+const ACHIEVEMENTS=[
+  {id:'first_blood',name:'First Blood',check:s=>s.kills>=1},
+  {id:'kill_100',name:'Centurion',check:s=>s.kills>=100},
+  {id:'kill_500',name:'Reaper',check:s=>s.kills>=500},
+  {id:'survive_60',name:'Survivor',check:s=>s.time>=60},
+  {id:'survive_180',name:'Persistent',check:s=>s.time>=180},
+  {id:'level_5',name:'Growing',check:s=>s.level>=5},
+  {id:'level_12',name:'Overpowered',check:s=>s.level>=12},
+  {id:'souls_1000',name:'Soul Collector',check:()=>meta.souls>=1000}
+];
+function toast(msg,color){const d=document.createElement('div');d.className='toast';d.textContent=msg;d.style.borderColor=color||'#ff0';d.style.color=color||'#ff0';document.getElementById('toast').appendChild(d);setTimeout(()=>d.remove(),2500)}
+function checkAchievements(){for(const a of ACHIEVEMENTS){if(!meta.achievements[a.id]&&a.check({kills:player.kills,time:player.time,level:player.level})){meta.achievements[a.id]=Date.now();toast('Achievement - '+a.name);saveMeta()}}}
+
+// ---------- 5 unlock tiers ----------
+const UNLOCK_TIERS=[
+  {key:'tier1',cost:100,name:'Tier 1: +20 HP',apply:p=>{p.maxHp+=20;p.hp+=20}},
+  {key:'tier2',cost:250,name:'Tier 2: +20% speed',apply:p=>p.speed*=1.2},
+  {key:'tier3',cost:500,name:'Tier 3: +25 magnet',apply:p=>p.magnet+=25},
+  {key:'tier4',cost:800,name:'Tier 4: Start with Lightning',apply:p=>p.weapons.push({type:'lightning',level:1,damage:12,cooldown:0,cooldownMax:2})},
+  {key:'tier5',cost:1500,name:'Tier 5: +40% dmg',apply:p=>p.weapons.forEach(w=>w.damage*=1.4)}
+];
+
+// ---------- difficulty select ----------
+const DIFFICULTIES={
+  easy:{hpMul:1.3,spawnMul:0.7,enemyHpMul:0.8,damageTaken:0.75,label:'Easy'},
+  normal:{hpMul:1.0,spawnMul:1.0,enemyHpMul:1.0,damageTaken:1.0,label:'Normal'},
+  hard:{hpMul:0.7,spawnMul:1.5,enemyHpMul:1.35,damageTaken:1.3,label:'Hard'}
+};
+let difficulty=DIFFICULTIES.normal;
+
+const keys={};
+window.addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);
+window.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+
+// ---------- ENEMY_TYPES: 5 classes via subclass inheritance ----------
+class EnemyBase{
+  constructor(type){this.type=type;const side=irand(0,4);if(side===0){this.x=rand(0,W);this.y=-20}else if(side===1){this.x=W+20;this.y=rand(0,H)}else if(side===2){this.x=rand(0,W);this.y=H+20}else{this.x=-20;this.y=rand(0,H)}}
+  update(dt,pl){const a=angle(this,pl);this.x+=Math.cos(a)*this.speed*dt;this.y+=Math.sin(a)*this.speed*dt}
+  takeDamage(dmg){this.hp-=dmg;if(this.hp<=0){player.addXp(this.xpValue);player.kills++;for(let i=0;i<8;i++)particles.push({x:this.x,y:this.y,vx:rand(-100,100),vy:rand(-100,100),r:rand(2,4),life:1,color:this.color})}}
+  draw(){ctx.fillStyle=this.color;ctx.globalAlpha=1;ctx.shadowBlur=15;ctx.shadowColor=this.color;ctx.beginPath();ctx.arc(this.x,this.y,this.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0}
+}
+class EnemyBat extends EnemyBase{constructor(){super('bat');this.r=10;this.hp=15*difficulty.enemyHpMul;this.speed=120;this.color='#ff0';this.xpValue=3;this.damage=5}}
+class EnemyZombie extends EnemyBase{constructor(){super('zombie');this.r=14;this.hp=40*difficulty.enemyHpMul;this.speed=60;this.color='#0f0';this.xpValue=8;this.damage=10}}
+class EnemyGhost extends EnemyBase{constructor(){super('ghost');this.r=12;this.hp=30*difficulty.enemyHpMul;this.speed=100;this.color='#fff';this.xpValue=6;this.damage=8;this.phase=0;this.phaseTimer=0}
+  update(dt,pl){super.update(dt,pl);this.phaseTimer+=dt;if(this.phaseTimer>1.5){this.phase=1-this.phase;this.phaseTimer=0}this.speed=this.phase?150:100}
+  draw(){ctx.globalAlpha=this.phase?0.5:1;ctx.fillStyle=this.color;ctx.shadowBlur=15;ctx.shadowColor=this.color;ctx.beginPath();ctx.arc(this.x,this.y,this.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.globalAlpha=1}
+}
+class EnemySkeletonShooter extends EnemyBase{constructor(){super('skeleton');this.r=12;this.hp=35*difficulty.enemyHpMul;this.speed=80;this.color='#888';this.xpValue=7;this.damage=7;this.shootTimer=rand(1,2)}
+  update(dt,pl){super.update(dt,pl);this.shootTimer-=dt;if(this.shootTimer<=0){this.shootTimer=1.5;const a=angle(this,pl);projectiles.push({x:this.x,y:this.y,vx:Math.cos(a)*220,vy:Math.sin(a)*220,r:4,owner:'enemy',color:'#888',dmg:10})}}
+}
+class EnemyDemonTank extends EnemyBase{constructor(){super('demon');this.r=20;this.hp=120*difficulty.enemyHpMul;this.speed=55;this.color='#f00';this.xpValue=20;this.damage=20}}
+const ENEMY_TYPES=[EnemyBat,EnemyZombie,EnemyGhost,EnemySkeletonShooter,EnemyDemonTank];
+function spawnProcGen(t){
+  const r=rng();let E;
+  if(t<15)      E=r<.8?EnemyBat:EnemyZombie;
+  else if(t<30) E=r<.45?EnemyBat:r<.7?EnemyZombie:r<.9?EnemyGhost:EnemySkeletonShooter;
+  else if(t<60) E=r<.25?EnemyBat:r<.45?EnemyZombie:r<.7?EnemyGhost:r<.9?EnemySkeletonShooter:EnemyDemonTank;
+  else          E=r<.15?EnemyBat:r<.35?EnemyZombie:r<.55?EnemyGhost:r<.8?EnemySkeletonShooter:EnemyDemonTank;
+  enemies.push(new E());
+}
+
+// ---------- WEAPON_TYPES: 5+ weapon definitions ----------
+const WEAPON_TYPES=[
+  {id:'orb',name:'Orb',cooldownMax:1,baseDmg:10,desc:'Orbital projectiles'},
+  {id:'lightning',name:'Lightning',cooldownMax:2,baseDmg:10,desc:'Chain zap'},
+  {id:'firewave',name:'Fire Wave',cooldownMax:4,baseDmg:15,desc:'Expanding ring'},
+  {id:'frostbeam',name:'Frost Beam',cooldownMax:3,baseDmg:8,desc:'Slowing beam'},
+  {id:'poison',name:'Poison Cloud',cooldownMax:5,baseDmg:4,desc:'DoT cloud'},
+  {id:'shuriken',name:'Shuriken',cooldownMax:1.2,baseDmg:9,desc:'Spinning blades'}
+];
+
+// ---------- UPGRADE_POOL: 10 upgrade nodes ----------
+const UPGRADE_POOL=[
+  {id:'weapon_lightning',type:'new',weapon:'lightning',name:'Lightning'},
+  {id:'weapon_firewave',type:'new',weapon:'firewave',name:'Fire Wave'},
+  {id:'weapon_frostbeam',type:'new',weapon:'frostbeam',name:'Frost Beam'},
+  {id:'weapon_poison',type:'new',weapon:'poison',name:'Poison Cloud'},
+  {id:'weapon_shuriken',type:'new',weapon:'shuriken',name:'Shuriken'},
+  {id:'damage',type:'damage',name:'+Damage',desc:'Weapon damage +25%'},
+  {id:'speed',type:'speed',name:'+Speed',desc:'Move speed +15%'},
+  {id:'area',type:'area',name:'+Area',desc:'Weapon area +20%'},
+  {id:'count',type:'count',name:'+Projectiles',desc:'Extra projectiles +1'},
+  {id:'hp',type:'hp',name:'+HP',desc:'Max HP +30'},
+  {id:'magnet',type:'magnet',name:'+Magnet',desc:'XP magnet +40%'},
+  {id:'regen',type:'regen',name:'+Regen',desc:'HP regen +1/s'}
+];
+
+// ---------- Player class ----------
+class Player{
+  constructor(){this.x=W/2;this.y=H/2;this.r=16;this.hp=100;this.maxHp=100;this.speed=180;this.level=1;this.xp=0;this.xpNeed=10;this.invuln=0;this.regen=0;
+    this.weapons=[{type:'orb',level:1,damage:10,cooldown:0,cooldownMax:1,projectiles:[]}];
+    this.kills=0;this.time=0;this.shake=0;this.magnet=80}
+  update(dt){this.invuln=Math.max(0,this.invuln-dt);this.hp=Math.min(this.maxHp,this.hp+this.regen*dt);
+    if(keys['w'])this.y-=this.speed*dt;if(keys['s'])this.y+=this.speed*dt;if(keys['a'])this.x-=this.speed*dt;if(keys['d'])this.x+=this.speed*dt;
+    this.x=Math.max(this.r,Math.min(W-this.r,this.x));this.y=Math.max(this.r,Math.min(H-this.r,this.y));this.time+=dt;
+    this.weapons.forEach(w=>{w.cooldown=Math.max(0,w.cooldown-dt);
+      if(w.type==='orb'){if(w.cooldown<=0){w.projectiles=[];for(let i=0;i<w.level+2;i++)w.projectiles.push({angle:i*Math.PI*2/(w.level+2),dist:40+10*w.level,life:0});w.cooldown=w.cooldownMax}
+        w.projectiles.forEach(p=>{p.life+=dt;p.angle+=dt*2})}})}
+  takeDamage(dmg){if(this.invuln>0)return;this.hp-=dmg*difficulty.damageTaken;this.invuln=.5;this.shake=10;if(window.KJ&&KJ.flash)KJ.flash('#f00',60);if(this.hp<=0)reset()}
+  addXp(a){this.xp+=a;if(this.xp>=this.xpNeed){this.xp-=this.xpNeed;this.level++;this.xpNeed=Math.floor(this.xpNeed*1.5);showChooseUpgrade()}}
+  draw(){if(this.shake>0){ctx.save();ctx.translate(rand(-this.shake,this.shake),rand(-this.shake,this.shake));this.shake*=.9}
+    ctx.fillStyle='#0ff';ctx.shadowBlur=20;ctx.shadowColor='#0ff';ctx.beginPath();ctx.arc(this.x,this.y,this.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
+    this.weapons.forEach(w=>{if(w.type==='orb')w.projectiles.forEach(p=>{const px=this.x+Math.cos(p.angle)*p.dist,py=this.y+Math.sin(p.angle)*p.dist;ctx.fillStyle='#f0f';ctx.shadowBlur=15;ctx.shadowColor='#f0f';ctx.beginPath();ctx.arc(px,py,6,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0})});
+    if(this.shake>0)ctx.restore()}
+}
+
+// ---------- Boss (6th enemy class) ----------
+class EnemyBoss extends EnemyBase{
+  constructor(){super('boss');this.x=W/2;this.y=100;this.r=40;this.hp=500*difficulty.enemyHpMul;this.speed=40;this.color='#f0f';this.xpValue=80;this.damage=20;this.attackPhase=0;this.attackTimer=0}
+  update(dt,pl){this.attackTimer+=dt;const a=angle(this,pl);this.x+=Math.cos(a)*this.speed*dt;this.y+=Math.sin(a)*this.speed*dt;
+    if(this.attackPhase===0){if(this.attackTimer>3){this.attackPhase=1;this.attackTimer=0}}
+    else{if(this.attackTimer>.5){for(let i=0;i<12;i++){const ang=i*Math.PI*2/12;projectiles.push({x:this.x,y:this.y,vx:Math.cos(ang)*160,vy:Math.sin(ang)*160,r:8,owner:'enemy',color:'#f0f',dmg:20})}this.attackPhase=0;this.attackTimer=0}}}
+  draw(){ctx.fillStyle='#f0f';ctx.shadowBlur=30;ctx.shadowColor='#f0f';ctx.beginPath();ctx.arc(this.x,this.y,this.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.fillStyle='#fff';ctx.font='20px Orbitron';ctx.fillText('BOSS',this.x-25,this.y-50)}
+}
+
+let player=new Player();
+let enemies=[],particles=[],projectiles=[],pickups=[];
+let lastSpawn=0,bossSpawned=false,paused=true,running=false;
+
+function spawnEnemies(dt){lastSpawn+=dt;const baseTime=Math.max(.4,2-player.time/60)/difficulty.spawnMul;if(lastSpawn>baseTime){spawnProcGen(player.time);lastSpawn=0}
+  if(player.time>120&&!bossSpawned){enemies.push(new EnemyBoss());bossSpawned=true}}
+
+function updateWeapons(dt){
+  player.weapons.forEach(w=>{
+    if(w.type==='lightning'&&w.cooldown<=0){let c=null,d=Infinity;enemies.forEach(e=>{if(e.type==='boss')return;const cd=dist(player,e);if(cd<d){d=cd;c=e}});
+      if(c&&d<250){for(let i=0;i<w.level;i++){const tx=c.x+rand(-20,20),ty=c.y+rand(-20,20);projectiles.push({x:player.x,y:player.y,tx,ty,r:4,owner:'player',color:'#ff0',dmg:w.damage*10,delay:i*.1})}w.cooldown=w.cooldownMax}}
+    if(w.type==='firewave'&&w.cooldown<=0){for(let i=0;i<16;i++){const a=i*Math.PI*2/16;projectiles.push({x:player.x,y:player.y,vx:Math.cos(a)*180,vy:Math.sin(a)*180,r:6,owner:'player',color:'#f60',dmg:w.damage,life:1.5})}w.cooldown=w.cooldownMax}
+    if(w.type==='frostbeam'&&w.cooldown<=0){let c=null,d=Infinity;enemies.forEach(e=>{if(e.type==='boss')return;const cd=dist(player,e);if(cd<d){d=cd;c=e}});if(c){const a=angle(player,c);for(let i=0;i<6;i++){const dx=Math.cos(a)*i*40,dy=Math.sin(a)*i*40;projectiles.push({x:player.x+dx,y:player.y+dy,r:8,owner:'player',color:'#0cf',dmg:w.damage,life:0.6,slow:true})}w.cooldown=w.cooldownMax}}
+    if(w.type==='poison'&&w.cooldown<=0){let c=null,d=Infinity;enemies.forEach(e=>{if(e.type==='boss')return;const cd=dist(player,e);if(cd<d){d=cd;c=e}});if(c){projectiles.push({x:c.x,y:c.y,r:40,owner:'player',color:'#0f0',dmg:w.damage*0.5,life:3,poison:true});w.cooldown=w.cooldownMax}}
+    if(w.type==='shuriken'&&w.cooldown<=0){for(let i=0;i<w.level+1;i++){const a=rng()*Math.PI*2;projectiles.push({x:player.x,y:player.y,vx:Math.cos(a)*320,vy:Math.sin(a)*320,r:6,owner:'player',color:'#0ff',dmg:w.damage,life:1.2})}w.cooldown=w.cooldownMax}
+  });
+}
+
+function updateProjectiles(dt){
+  projectiles=projectiles.filter(p=>{
+    if(p.delay){p.delay-=dt;if(p.delay<=0)delete p.delay;else return true}
+    if(p.owner==='player'&&p.tx!==undefined){const a=angle({x:p.x,y:p.y},{x:p.tx,y:p.ty});p.x+=Math.cos(a)*800*dt;p.y+=Math.sin(a)*800*dt;if(dist(p,{x:p.tx,y:p.ty})<10)p.hit=true}
+    else if(p.vx!==undefined){p.x+=p.vx*dt;p.y+=p.vy*dt}
+    if(p.life!==undefined){p.life-=dt;if(p.life<=0)p.gone=true}
+    if(p.poison){enemies.forEach(e=>{if(dist(p,e)<p.r)e.takeDamage(p.dmg*dt)})}
+    if(p.slow){enemies.forEach(e=>{if(dist(p,e)<40){e.speed=Math.max(e.speed*0.5,30);e.takeDamage(p.dmg*dt)}})}
+    if(!p.poison&&!p.slow&&p.owner==='player'){enemies.forEach(e=>{if(dist(p,e)<p.r+e.r){e.takeDamage(p.dmg);p.hit=true}})}
+    if(p.owner==='enemy'&&dist(p,player)<p.r+player.r){player.takeDamage(p.dmg);p.hit=true}
+    if(p.hit||p.gone||p.x<-50||p.x>W+50||p.y<-50||p.y>H+50)return false;
+    return true;
+  });
+}
+
+function updatePickups(dt){pickups=pickups.filter(x=>{const d=dist(x,player);if(d<player.magnet){const a=angle(x,player);x.x+=Math.cos(a)*300*dt;x.y+=Math.sin(a)*300*dt}if(d<20){player.addXp(x.amount);for(let i=0;i<5;i++)particles.push({x:x.x,y:x.y,vx:rand(-50,50),vy:rand(-50,50),r:rand(2,4),life:1,color:'#0ff'});return false}return true})}
+
+function drawProjectiles(){projectiles.forEach(p=>{if(p.poison||p.slow){ctx.strokeStyle=p.color;ctx.lineWidth=3;ctx.shadowBlur=20;ctx.shadowColor=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.stroke();ctx.shadowBlur=0}else{ctx.fillStyle=p.color;ctx.shadowBlur=15;ctx.shadowColor=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0}})}
+function drawPickups(){pickups.forEach(x=>{ctx.fillStyle='#0ff';ctx.shadowBlur=20;ctx.shadowColor='#0ff';ctx.beginPath();ctx.arc(x.x,x.y,6,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0})}
+function drawParticles(dt){particles=particles.filter(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt;ctx.globalAlpha=p.life;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;return p.life>0})}
+
+// ---------- chooseUpgrade pickUpgrade modal ----------
+function showChooseUpgrade(){
+  paused=true;
+  const avail=UPGRADE_POOL.filter(u=>u.type!=='new'||!player.weapons.find(w=>w.type===u.weapon));
+  const opts=[...avail].sort(()=>rng()-0.5).slice(0,3);
+  const div=document.getElementById('chooseUpgrade');div.innerHTML='';div.style.display='block';
+  opts.forEach(opt=>{
+    const card=document.createElement('div');card.className='card';
+    const desc=opt.desc||(opt.type==='new'?'New weapon':'');
+    card.innerHTML='<h3>'+opt.name+'</h3><p>'+desc+'</p>';
+    card.onclick=()=>{
+      if(opt.type==='new'){const ex=player.weapons.find(w=>w.type===opt.weapon);if(ex)ex.level++;else{const wt=WEAPON_TYPES.find(w=>w.id===opt.weapon);player.weapons.push({type:opt.weapon,level:1,damage:wt.baseDmg,cooldown:0,cooldownMax:wt.cooldownMax})}}
+      else if(opt.type==='damage')player.weapons.forEach(w=>w.damage*=1.25);
+      else if(opt.type==='speed')player.speed*=1.15;
+      else if(opt.type==='area')player.weapons.forEach(w=>{if(['orb','firewave'].includes(w.type))w.level++});
+      else if(opt.type==='count')player.weapons.forEach(w=>{if(['orb','lightning','shuriken'].includes(w.type))w.level++});
+      else if(opt.type==='hp'){player.maxHp+=30;player.hp+=30}
+      else if(opt.type==='magnet')player.magnet+=40;
+      else if(opt.type==='regen')player.regen+=1;
+      div.style.display='none';paused=false;
+      if(window.KJ&&KJ.levelUp)KJ.levelUp();
+    };
+    div.appendChild(card);
+  });
+}
+
+function updateUI(){
+  document.getElementById('hpFill').style.width=Math.max(0,player.hp/player.maxHp*100)+'%';
+  document.getElementById('xpFill').style.width=player.xp/player.xpNeed*100+'%';
+  document.getElementById('timer').textContent=Math.floor(player.time/60).toString().padStart(2,'0')+':'+Math.floor(player.time%60).toString().padStart(2,'0');
+  document.getElementById('kills').textContent='Kills: '+player.kills;
+  document.getElementById('metaBar').textContent='Souls: '+meta.souls+' / Seed: '+SEED+' / '+difficulty.label;
+  const wd=document.getElementById('weapons');wd.innerHTML='';player.weapons.forEach(w=>{const i=document.createElement('div');i.className='weapon-icon';i.textContent=w.type[0].toUpperCase();wd.appendChild(i)});
+}
+
+function reset(){
+  const earned=Math.floor(player.kills*0.4+player.time*0.5+player.level*5);
+  meta.souls+=earned;meta.runs++;if(player.time>meta.bestTime)meta.bestTime=player.time;if(player.kills>meta.bestKills)meta.bestKills=player.kills;
+  saveMeta();toast('+'+earned+' souls','#ff0');
+  if(window.KM&&KM.gameOver)KM.gameOver(Math.floor(player.time),{cause:'death',onRetry:()=>location.reload()});
+  setTimeout(()=>location.reload(),2000);
+}
+
+let lastTime=performance.now();
+if(window.KM&&KM.init)KM.init({slug:'neon-survivors-v2',title:'Neon Survivors Enhanced',tagline:'Survive the Neon Night',controls:'WASD or Touch'});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')paused=true});
+
+function gameLoop(){
+  const now=performance.now();const dt=Math.min(0.05,(now-lastTime)/1000);lastTime=now;
+  if(running&&!paused){
+    player.update(dt);spawnEnemies(dt);updateWeapons(dt);updateProjectiles(dt);updatePickups(dt);
+    enemies=enemies.filter(e=>{e.update(dt,player);if(dist(e,player)<e.r+player.r){player.takeDamage(e.damage||e.atk||10);return false}if(e.hp<=0){pickups.push({x:e.x,y:e.y,amount:e.xpValue||3});return false}return true});
+    enemies.forEach(e=>{if(e.type==='boss')return;player.weapons.forEach(w=>{if(w.type==='orb'){w.projectiles.forEach(p=>{const px=player.x+Math.cos(p.angle)*p.dist,py=player.y+Math.sin(p.angle)*p.dist;if(dist({x:px,y:py},e)<10+e.r)e.takeDamage(w.damage*5*dt)})}})});
+    checkAchievements();
+    if(window.KM&&KM.trackScore)KM.trackScore(Math.floor(player.time));
+  }
+  ctx.clearRect(0,0,W,H);
+  if(running){player.draw();enemies.forEach(e=>e.draw());drawProjectiles();drawPickups();drawParticles(dt)}
+  updateUI();requestAnimationFrame(gameLoop);
+}
+
+function applyUnlocks(){for(const t of UNLOCK_TIERS)if(meta.unlocks[t.key])t.apply(player)}
+function startRun(diffKey){
+  difficulty=DIFFICULTIES[diffKey]||DIFFICULTIES.normal;player.maxHp*=difficulty.hpMul;player.hp=player.maxHp;
+  applyUnlocks();document.getElementById('start-overlay').style.display='none';running=true;paused=false;
+}
+document.addEventListener('DOMContentLoaded',()=>{
+  const info=document.getElementById('metaInfo');const un=UNLOCK_TIERS.filter(t=>meta.unlocks[t.key]).length;
+  info.innerHTML='Souls: '+meta.souls+' - Runs: '+meta.runs+' - Unlocks: '+un+'/5 - Best '+Math.floor(meta.bestTime)+'s';
+  for(const t of UNLOCK_TIERS){if(!meta.unlocks[t.key]&&meta.souls>=t.cost){meta.unlocks[t.key]=true;meta.souls-=t.cost;toast('Unlocked '+t.name,'#0f0');saveMeta();break}}
+  document.querySelectorAll('.diffBtn').forEach(b=>b.addEventListener('click',()=>startRun(b.dataset.diff)));
+  document.getElementById('start-btn').addEventListener('click',()=>startRun('normal'));
+});
+
+window.__NEONSURV2__={getScore:()=>player.kills,getState:()=>({kills:player.kills,time:player.time,level:player.level,seed:SEED,difficulty:difficulty.label})};
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>

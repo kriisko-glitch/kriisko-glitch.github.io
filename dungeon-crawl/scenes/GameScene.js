@@ -806,6 +806,10 @@
       }
       this.exitActive = true;
       this.exitLight.intensity = this.cfg.LIGHTING.EXIT_INTENSITY_ACTIVE;
+      if (window.KJ) {
+        window.KJ.levelUp();
+        window.KJ.flash('#4caf50', 120);
+      }
       if (this.exitPulseTween) {
         this.exitPulseTween.stop();
       }
@@ -876,6 +880,9 @@
       if (!this.player || this.transitioning) {
         return;
       }
+      if (window.KM && window.KM.isPaused()) {
+        return;
+      }
 
       this.updatePlayerInput(time);
       this.updateEnemyAI(time);
@@ -940,6 +947,7 @@
       this.audioSystem.playSlash();
       this.hitEmitter.setParticleTint(0xf5f5ff);
       this.hitEmitter.explode(14, this.player.x + this.playerFacing.x * 16, this.player.y + this.playerFacing.y * 16);
+      if (window.KJ) window.KJ.shoot();
 
       var arcHalfRad = Phaser.Math.DegToRad(cfg.PLAYER.ATTACK_ARC_DEG * 0.5);
       var range = cfg.PLAYER.ATTACK_RANGE;
@@ -994,6 +1002,11 @@
 
       this.hitEmitter.setParticleTint(this.cfg.ENEMIES[enemy.getData("enemyType")].COLOR);
       this.hitEmitter.explode(8, enemy.x, enemy.y);
+      if (window.KJ) {
+        window.KJ.shake(5, 120);
+        window.KJ.flash('#ff6b6b', 50);
+        window.KJ.hit();
+      }
 
       if (enemy.getData("hp") <= 0) {
         this.killEnemy(enemy);
@@ -1055,6 +1068,11 @@
       this.hitEmitter.setParticleTint(0xff5566);
       this.hitEmitter.explode(10, this.player.x, this.player.y);
       this.cameras.main.shake(this.cfg.FX.CAMERA_SHAKE_MS, this.cfg.FX.CAMERA_SHAKE_INTENSITY);
+      if (window.KJ) {
+        window.KJ.shake(10, 220);
+        window.KJ.flash('#ff0040', 100);
+        window.KJ.hit();
+      }
 
       var knock = new Phaser.Math.Vector2(this.player.x - enemy.x, this.player.y - enemy.y).normalize();
       this.player.body.velocity.x += knock.x * this.cfg.PLAYER.HIT_KNOCKBACK * 14;
@@ -1105,11 +1123,19 @@
       this.hitEmitter.explode(20, enemy.x, enemy.y);
       this.dropEnemyLoot(enemy.x, enemy.y);
 
+      const ex = enemy.x - this.cameras.main.scrollX;
+      const ey = enemy.y - this.cameras.main.scrollY;
       enemy.disableBody(true, true);
       enemy.destroy();
 
       this.runState.kills += 1;
       this.runState.score += this.cfg.SCORE.KILL;
+      if (window.KJ) {
+        window.KJ.shake(8, 180);
+        window.KJ.particles(ex, ey, 16, this.cfg.ENEMIES[enemyType].COLOR != null ? this.cfg.ENEMIES[enemyType].COLOR : '#ff6b6b');
+        window.KJ.hit();
+      }
+      if (window.KM) window.KM.trackScore(this.runState.score);
 
       if (this.enemies.countActive(true) === 0) {
         this.activateExit();
@@ -1175,6 +1201,12 @@
       this.audioSystem.playPickup();
       this.pickupEmitter.setParticleTint(0xffef95);
       this.pickupEmitter.explode(12, item.x, item.y);
+      if (window.KJ) {
+        var ix = item.x - this.cameras.main.scrollX;
+        var iy = item.y - this.cameras.main.scrollY;
+        window.KJ.particles(ix, iy, 10, '#ffc107');
+        window.KJ.pickup();
+      }
 
       var prefix = collectedByCompanion ? "Companion: " : "";
       this.eventBus.emit(this.cfg.EVENTS.ITEM_PICKED, prefix + pickupMessage);
@@ -1698,6 +1730,18 @@
         score: this.runState.score,
         itemsCollected: this.runState.itemsCollected
       });
+      if (window.KJ) {
+        window.KJ.shake(12, 300);
+        window.KJ.flash('#ff0040', 160);
+        window.KJ.gameOver();
+      }
+      if (window.KM) {
+        var self = this;
+        window.KM.gameOver(this.runState.score, {
+          cause: 'Slain in the dungeon',
+          onRetry: function () { self.scene.start('GameScene'); },
+        });
+      }
 
       this.cameras.main.fadeOut(this.cfg.FX.FADE_DURATION_MS, 0, 0, 0);
       this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {

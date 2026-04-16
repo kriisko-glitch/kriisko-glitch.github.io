@@ -51,6 +51,9 @@ export default class GameScene extends Phaser.Scene {
     if (!this.isRunning) {
       return;
     }
+    if (window.KM && window.KM.isPaused()) {
+      return;
+    }
 
     const deltaSeconds = delta / 1000;
     this.updateWaveClock(time);
@@ -588,6 +591,11 @@ export default class GameScene extends Phaser.Scene {
     this.lives -= 1;
     this.emitStats();
     this.playExitWarningSound();
+    if (window.KJ) {
+      window.KJ.shake(10, 220);
+      window.KJ.flash('#ff0040', 100);
+      window.KJ.hit();
+    }
 
     if (this.lives <= 0) {
       this.triggerGameOver();
@@ -661,6 +669,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.projectiles.add(projectile);
     this.playShootSound(tower.type);
+    if (window.KJ) window.KJ.shoot();
   }
 
   findNearestTowerInRange(enemy, maxRange) {
@@ -846,6 +855,11 @@ export default class GameScene extends Phaser.Scene {
     }
 
     this.refreshEnemyHpBar(enemy);
+    if (window.KJ) {
+      window.KJ.shake(4, 100);
+      window.KJ.flash('#ff6b6b', 40);
+      window.KJ.hit();
+    }
 
     if (enemy.hp <= 0) {
       this.killEnemy(enemy);
@@ -863,6 +877,8 @@ export default class GameScene extends Phaser.Scene {
       return;
     }
 
+    const ex = enemy.x;
+    const ey = enemy.y;
     enemy.isDead = true;
     enemy.destroy();
 
@@ -870,6 +886,12 @@ export default class GameScene extends Phaser.Scene {
     this.score += enemy.reward;
     this.emitStats();
     this.playEnemyDeathSound();
+    if (window.KJ) {
+      window.KJ.shake(8, 180);
+      window.KJ.particles(ex, ey, 16, '#ffc107');
+      window.KJ.hit();
+    }
+    if (window.KM) window.KM.trackScore(this.score);
   }
 
   checkWaveCompletion(time) {
@@ -887,6 +909,11 @@ export default class GameScene extends Phaser.Scene {
     this.score += this.cfg.GAME.WAVE_CLEAR_BONUS;
     this.emitStats();
     this.emitWaveState();
+    if (window.KJ) {
+      window.KJ.levelUp();
+      window.KJ.flash('#4caf50', 120);
+    }
+    if (window.KM) window.KM.trackScore(this.score);
   }
 
   buildTowerFromMenu(towerType) {
@@ -969,6 +996,10 @@ export default class GameScene extends Phaser.Scene {
     this.occupiedCellSet.add(this.cellKey(col, row));
     this.gold -= towerDef.cost;
     this.emitStats();
+    if (window.KJ) {
+      window.KJ.particles(worldPosition.x, worldPosition.y, 10, '#4caf50');
+      window.KJ.pickup();
+    }
 
     this.pendingBuildCell = null;
     this.bus.emit("hideTowerMenu");
@@ -1009,6 +1040,17 @@ export default class GameScene extends Phaser.Scene {
     this.bus.emit("hideTowerMenu");
     this.bus.emit("gameOver");
     this.playGameOverSound();
+    if (window.KJ) {
+      window.KJ.shake(12, 300);
+      window.KJ.flash('#ff0040', 160);
+      window.KJ.gameOver();
+    }
+    if (window.KM) {
+      window.KM.gameOver(this.score, {
+        cause: 'Defenses overrun',
+        onRetry: () => { this.scene.stop('GameOverScene'); this.scene.restart(); },
+      });
+    }
 
     this.scene.pause();
     this.scene.launch("GameOverScene", {
