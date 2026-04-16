@@ -30,6 +30,20 @@
   'use strict';
   if (window.KM) return;
 
+  // Auto-load the depth layer (faux-3D shading for canvas games).
+  // Loaded before DOM ready so CSS applies on first paint.
+  (function loadDepth() {
+    if (window.KD) return;
+    try {
+      const ownSrc = document.currentScript && document.currentScript.src;
+      const base = ownSrc ? ownSrc.replace(/kriisko-meta\.js.*$/, '') : '../shared/';
+      const s = document.createElement('script');
+      s.src = base + 'kriisko-depth.js';
+      s.async = false;
+      document.head.appendChild(s);
+    } catch (_) {}
+  })();
+
   const DISCORD_URL = 'https://kriisko.itch.io/';
 
   const _cfg = {
