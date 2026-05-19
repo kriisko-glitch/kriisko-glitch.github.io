@@ -4,7 +4,7 @@
 
 Live at **[kriisko-glitch.github.io](https://kriisko-glitch.github.io)**.
 
-A portfolio of browser games built with Phaser 3, TypeScript, and Vite. Every game is scored against a [shared design rubric](https://kriisko-glitch.github.io) — 9 titles cleared the 7.0 "ship-ready" bar.
+A portfolio of browser games built with Phaser 3, TypeScript, and Vite. Every game is scored against a [shared design rubric](RUBRIC.md) — 9 titles cleared the 7.0 "ship-ready" bar.
 
 ---
 
@@ -46,15 +46,14 @@ Reusable code lives under [`shared/`](shared):
 
 ## Design Rubric
 
-Games are scored on:
+Games are scored across four equally-weighted pillars (see [RUBRIC.md](RUBRIC.md) for the full spec):
 
-- **Genre Floor** — does it meet baseline expectations for its genre?
-- **Depth** — meaningful upgrades, runs, and choices
-- **Juice** — feedback, particles, audio, screen feel
-- **Mobile** — playable on phone with touch controls
-- **Polish** — UI, performance, end-game flow
+- **SDT — Need Satisfaction** — Autonomy, Competence, Relatedness (Ryan/Deci PENS model)
+- **Modern 2D Visuals** — readability, animation, juice, lighting, palette, UI
+- **Playability (Feel)** — input latency, frame pacing, juice density, audio, retry loop
+- **Depth** — skill ceiling, decision density, strategy variety, emergence, progression
 
-25 of 29 titles clear the genre floor. 9 score ≥ 7.0 overall.
+Each game runs through an automated AI-player evaluation pass (random play vs. rule-based optimal play, source inspection, vision-LLM screenshot scoring) and lands a composite 0–10 score with per-pillar breakdowns. **9 of 29 titles** clear the 7.0 ship-ready bar; genre-specific floors apply (Roguelike requires 7.0, Arcade only 6.0).
 
 ## Running Locally
 
